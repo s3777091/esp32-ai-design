@@ -126,7 +126,7 @@ Example (from `lichuang-c3-dev`):
 
 // Language
 "CONFIG_LANGUAGE_EN_US=y"
-"CONFIG_LANGUAGE_ZH_CN=y"
+"CONFIG_LANGUAGE_VI_VN=y"
 
 // Wake word configuration
 "CONFIG_USE_DEVICE_AEC=y"          // enable on-device AEC

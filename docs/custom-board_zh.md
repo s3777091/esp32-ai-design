@@ -125,7 +125,7 @@ mkdir main/boards/my-custom-board
 
 // 语言配置
 "CONFIG_LANGUAGE_EN_US=y"  // 英语
-"CONFIG_LANGUAGE_ZH_CN=y"  // 简体中文
+"CONFIG_LANGUAGE_VI_VN=y"  // 越南语
 
 // 唤醒词配置
 "CONFIG_USE_DEVICE_AEC=y"          // 启用设备端 AEC
