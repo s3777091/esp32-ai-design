@@ -1,0 +1,61 @@
+# ESP-IDF / CMake build output
+/build/
+/build-*/
+/managed_components/
+/sdkconfig
+/sdkconfig.old
+/compile_commands.json
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+
+# Firmware artifacts
+*.bin
+*.elf
+*.hex
+*.map
+*.uf2
+
+# Node / Vite preview
+node_modules/
+dist/
+dist-ssr/
+.vite/
+*.tsbuildinfo
+coverage/
+*.local
+
+# Python tooling
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+
+# PlatformIO
+.pio/
+.pioenvs/
+.piolibdeps/
+
+# Local environment and logs
+.env
+.env.*
+!.env.example
+*.log
+logs/
+tmp/
+temp/
+.cache/
+
+# Editor / OS metadata
+.idea/
+.vscode/*
+!.vscode/extensions.json
+!.vscode/launch.json
+!.vscode/settings.json
+!.vscode/tasks.json
+.DS_Store
+Thumbs.db
+Desktop.ini

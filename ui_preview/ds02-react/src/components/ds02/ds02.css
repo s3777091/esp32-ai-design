@@ -1,0 +1,35 @@
+/* DS-02 specific styles (the parts that don't translate cleanly to Tailwind).
+   The dim/awake state handling and the standby wallpaper live here. */
+
+.ds02-screen[data-state="dim"] .ds02-standby {
+  filter: brightness(0.28) saturate(0.72);
+  opacity: 0.94;
+}
+
+.ds02-screen[data-state="black"] .ds02-standby {
+  opacity: 0;
+}
+
+.ds02-standby {
+  display: grid;
+  justify-items: end;
+  align-items: start;
+  padding: 14px 16px 16px;
+  background:
+    linear-gradient(180deg, rgba(0, 0, 0, 0.08), rgba(0, 0, 0, 0.58)),
+    radial-gradient(circle at 68% 18%, rgba(255, 255, 255, 0.72) 0 3%, transparent 4%),
+    radial-gradient(circle at 22% 32%, rgba(255, 255, 255, 0.62) 0 8%, transparent 9%),
+    radial-gradient(circle at 39% 27%, rgba(255, 255, 255, 0.45) 0 11%, transparent 12%),
+    linear-gradient(158deg, #8ecbff 0 36%, #d9e7f5 37% 49%, #86a5bb 50% 61%, #8b7966 62% 100%);
+  transition: opacity 180ms ease, filter 180ms ease;
+}
+
+.ds02-overlay {
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(165deg, transparent 0 47%, rgba(49, 38, 30, 0.72) 48% 54%, transparent 55%),
+    linear-gradient(20deg, transparent 0 57%, rgba(34, 43, 52, 0.42) 58% 64%, transparent 65%);
+  opacity: 0.8;
+  pointer-events: none;
+}
