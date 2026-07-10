@@ -1,0 +1,15 @@
+services:
+  xiaozhi-server:
+    environment:
+      WAIT_FOR_REDIS_HOST: "${WAIT_FOR_REDIS_HOST:-redis}"
+      WAIT_FOR_REDIS_PORT: "${WAIT_FOR_REDIS_PORT:-6379}"
+      XIAOZHI_REDIS_HOST: "${XIAOZHI_REDIS_HOST:-redis}"
+      XIAOZHI_REDIS_PORT: "${XIAOZHI_REDIS_PORT:-6379}"
+    networks:
+      - default
+      - shared_redis
+
+networks:
+  shared_redis:
+    external: true
+    name: "${SHARED_REDIS_NETWORK:-protexa_default}"

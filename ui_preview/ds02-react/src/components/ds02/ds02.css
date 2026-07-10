@@ -1,6 +1,10 @@
 /* DS-02 specific styles (the parts that don't translate cleanly to Tailwind).
    The dim/awake state handling and the standby wallpaper live here. */
 
+.ds02-screen {
+  --ds02-system-bar-height: 20px;
+}
+
 .ds02-screen[data-state="dim"] .ds02-standby {
   filter: brightness(0.28) saturate(0.72);
   opacity: 0.94;
@@ -32,4 +36,185 @@
     linear-gradient(20deg, transparent 0 57%, rgba(34, 43, 52, 0.42) 58% 64%, transparent 65%);
   opacity: 0.8;
   pointer-events: none;
+}
+
+.ds02-system-bar {
+  position: absolute;
+  inset: 0 0 auto;
+  z-index: 20;
+  height: var(--ds02-system-bar-height);
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  padding: 0 8px;
+  background: #000;
+  pointer-events: none;
+}
+
+.ds02-low-battery-pill {
+  position: absolute;
+  left: 50%;
+  top: calc(var(--ds02-system-bar-height) + 8px);
+  z-index: 24;
+  min-width: 118px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  padding: 0 14px;
+  border: 1px solid rgba(255, 92, 122, 0.5);
+  border-radius: 999px;
+  background: rgba(7, 10, 15, 0.92);
+  color: #ffd4df;
+  font-size: 10px;
+  font-weight: 800;
+  line-height: 1;
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.58);
+  opacity: 0;
+  pointer-events: none;
+  transform: translate(-50%, -6px) scale(0.92);
+  transition: opacity 180ms ease, transform 180ms ease;
+}
+
+.ds02-low-battery-pill[data-visible="true"] {
+  opacity: 1;
+  transform: translate(-50%, 0) scale(1);
+}
+
+.ds02-standby-clock {
+  top: var(--ds02-system-bar-height);
+  padding-top: 8px;
+}
+
+.ds02-dock-page {
+  position: absolute;
+  inset-inline: 0;
+  top: var(--ds02-system-bar-height);
+  bottom: 3rem;
+  overflow: hidden;
+}
+
+.ds02-settings-scroll {
+  scrollbar-width: none;
+}
+
+.ds02-settings-scroll::-webkit-scrollbar {
+  display: none;
+}
+
+.ds02-settings-range {
+  accent-color: #67e8f9;
+}
+
+.profile-avatar-screen {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: #000;
+  overflow: hidden;
+}
+
+.profile-avatar-stage {
+  position: relative;
+  width: min(144px, 58%);
+  aspect-ratio: 1;
+  transform-style: preserve-3d;
+  perspective: 720px;
+}
+
+.profile-avatar-orb {
+  position: absolute;
+  inset: 0;
+  border-radius: 999px;
+  overflow: hidden;
+  transform: scale(1);
+  background:
+    radial-gradient(circle at 34% 17%, rgba(255, 255, 255, 0.96) 0 5%, transparent 15%),
+    radial-gradient(circle at 29% 29%, rgba(101, 216, 255, 0.98) 0 24%, transparent 42%),
+    radial-gradient(circle at 74% 35%, rgba(231, 255, 217, 0.88) 0 9%, transparent 19%),
+    radial-gradient(circle at 70% 64%, rgba(0, 47, 32, 0.95) 0 30%, transparent 55%),
+    radial-gradient(circle at 20% 78%, rgba(191, 232, 112, 0.9) 0 14%, transparent 31%),
+    linear-gradient(145deg, #7ee1ff 0%, #249cc1 34%, #0f4b38 62%, #07130e 100%);
+  box-shadow:
+    inset 16px 18px 26px rgba(255, 255, 255, 0.24),
+    inset -22px -28px 34px rgba(0, 0, 0, 0.58),
+    0 18px 34px rgba(0, 0, 0, 0.72);
+}
+
+.profile-avatar-orb::before {
+  content: "";
+  position: absolute;
+  inset: -18%;
+  border-radius: inherit;
+  background:
+    radial-gradient(circle at 34% 20%, rgba(255, 255, 255, 0.82) 0 7%, transparent 18%),
+    linear-gradient(115deg, transparent 0 36%, rgba(255, 255, 255, 0.2) 38% 48%, transparent 51%);
+  mix-blend-mode: screen;
+  opacity: 0.92;
+}
+
+.profile-avatar-orb::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background:
+    repeating-radial-gradient(circle at 47% 52%, rgba(255, 255, 255, 0.11) 0 1px, transparent 1px 3px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.04), transparent 48%, rgba(0, 0, 0, 0.2));
+  opacity: 0.38;
+}
+
+.profile-avatar-cloud {
+  position: absolute;
+  display: block;
+  border-radius: 999px;
+  filter: blur(3px);
+  opacity: 0.8;
+}
+
+.profile-avatar-cloud-a {
+  left: 15%;
+  top: 15%;
+  width: 54%;
+  height: 20%;
+  background: rgba(231, 249, 255, 0.82);
+  transform: rotate(-14deg);
+}
+
+.profile-avatar-cloud-b {
+  right: 7%;
+  top: 24%;
+  width: 34%;
+  height: 25%;
+  background: rgba(241, 255, 223, 0.78);
+  transform: rotate(20deg);
+}
+
+.profile-avatar-cloud-c {
+  left: 1%;
+  bottom: 11%;
+  width: 42%;
+  height: 20%;
+  background: rgba(228, 255, 160, 0.74);
+  transform: rotate(-22deg);
+}
+
+.profile-avatar-screen[data-speaking="true"] .profile-avatar-orb {
+  animation: profile-avatar-speaking 760ms ease-in-out infinite;
+}
+
+@keyframes profile-avatar-speaking {
+  0%,
+  100% {
+    transform: translateY(0) scale(1);
+    filter: saturate(1);
+  }
+  34% {
+    transform: translateY(-3px) scale(1.055);
+    filter: saturate(1.18);
+  }
+  68% {
+    transform: translateY(2px) scale(0.982);
+    filter: saturate(1.08);
+  }
 }

@@ -39,6 +39,7 @@ public:
     void ShowLauncher();
     void AdvanceStandbyButtonState();
     void WakeFromWakeWord(const char* wake_word = nullptr);
+    void SetProfileVoiceActive(bool active);
 
     void SetBluetoothStateProvider(Ds02BluetoothStateProvider provider);
     void SetLunarDateProvider(Ds02LunarDateProvider provider);
@@ -57,21 +58,27 @@ private:
 
     void CreateStandbyObjects();
     void CreateLauncherObjects();
+    void CreateSystemBarObjects();
+    void CreateLowBatteryNotificationObjects();
     void CreateCalendarObjects();
+    void CreateProfileObjects();
     void CreateDockObjects();
     void RefreshHomeData();
     void RefreshClock();
     void RefreshNetwork();
     void RefreshBattery();
     void RefreshBluetooth();
-    void RefreshLauncherStatus();
+    void UpdateLowBatteryNotification(int level, bool charging, bool discharging);
     void RefreshCalendar(bool force = false);
     void RefreshLauncherPage(bool force = false);
     void ApplyStandbyState();
     void SelectDockItem(size_t index);
     void ApplyDockSelection();
+    void SetProfileAvatarSpeaking(bool speaking);
+    void ApplyProfileAvatarPulse(int value);
 
     static void OnRefreshTimer(void* arg);
+    static void OnProfileAvatarTimer(void* arg);
     static void OnDockButtonClicked(lv_event_t* event);
     static bool GetLocalTime(struct tm& local_time);
     static bool IsLeapYear(int year);
@@ -82,8 +89,10 @@ private:
 
     StandbyState standby_state_ = StandbyState::Dim;
     esp_timer_handle_t refresh_timer_ = nullptr;
+    esp_timer_handle_t profile_avatar_timer_ = nullptr;
 
     lv_obj_t* root_ = nullptr;
+    lv_obj_t* system_bar_ = nullptr;
     lv_obj_t* standby_layer_ = nullptr;
     lv_obj_t* wallpaper_ = nullptr;
     lv_obj_t* dim_overlay_ = nullptr;
@@ -92,6 +101,8 @@ private:
     lv_obj_t* wifi_label_ = nullptr;
     lv_obj_t* bluetooth_label_ = nullptr;
     lv_obj_t* battery_label_ds02_ = nullptr;
+    lv_obj_t* low_battery_pill_ = nullptr;
+    lv_obj_t* low_battery_pill_label_ = nullptr;
     lv_obj_t* time_label_ = nullptr;
     lv_obj_t* bottom_info_ = nullptr;
     lv_obj_t* weather_label_ = nullptr;
@@ -100,9 +111,11 @@ private:
     lv_obj_t* launcher_content_ = nullptr;
     lv_obj_t* launcher_title_label_ = nullptr;
     lv_obj_t* launcher_body_label_ = nullptr;
-    lv_obj_t* launcher_status_label_ = nullptr;
     lv_obj_t* calendar_root_ = nullptr;
     lv_obj_t* calendar_month_label_ = nullptr;
+    lv_obj_t* profile_avatar_root_ = nullptr;
+    lv_obj_t* profile_avatar_shadow_ = nullptr;
+    lv_obj_t* profile_avatar_sphere_ = nullptr;
     lv_obj_t* dock_ = nullptr;
     std::array<lv_obj_t*, kWeekdayCount> calendar_weekday_labels_ = {};
     std::array<lv_obj_t*, kCalendarDayCount> calendar_day_cells_ = {};
@@ -118,12 +131,18 @@ private:
     int calendar_year_ = -1;
     int calendar_month_ = -1;
     int calendar_today_ = -1;
+    int profile_avatar_base_size_ = 0;
+    int profile_avatar_pulse_ = 0;
+    int profile_avatar_pulse_dir_ = 1;
+    bool profile_avatar_speaking_ = false;
+    bool profile_avatar_timer_running_ = false;
+    bool low_battery_pill_visible_ = false;
     std::string cached_time_;
     std::string cached_date_;
     std::string cached_wifi_;
     std::string cached_battery_;
     std::string cached_bluetooth_;
-    std::string cached_launcher_status_;
+    std::string cached_low_battery_text_;
     std::string cached_launcher_title_;
     std::string cached_launcher_body_;
     std::string cached_calendar_title_;

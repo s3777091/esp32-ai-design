@@ -1,0 +1,37 @@
+services:
+  xiaozhi-server:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        XIAOZHI_SERVER_REPO: "${XIAOZHI_SERVER_REPO:-https://github.com/xiaozhi-labs/xiaozhi-server.git}"
+        XIAOZHI_SERVER_REF: "${XIAOZHI_SERVER_REF:-main}"
+        ENABLE_SHERPA_ONNX: "${ENABLE_SHERPA_ONNX:-false}"
+    image: "${XIAOZHI_IMAGE:-xiaozhi-server-selfhost:latest}"
+    restart: unless-stopped
+    environment:
+      TZ: "${TZ:-Asia/Bangkok}"
+      WAIT_FOR_DATABASE_HOST: "${WAIT_FOR_DATABASE_HOST:-}"
+      WAIT_FOR_DATABASE_PORT: "${WAIT_FOR_DATABASE_PORT:-5432}"
+      WAIT_FOR_REDIS_HOST: "${WAIT_FOR_REDIS_HOST:-}"
+      WAIT_FOR_REDIS_PORT: "${WAIT_FOR_REDIS_PORT:-6379}"
+      XIAOZHI_DATABASE_DRIVER: "${XIAOZHI_DATABASE_DRIVER:-postgres}"
+      XIAOZHI_DATABASE_DSN: "${XIAOZHI_DATABASE_DSN:-}"
+      XIAOZHI_REDIS_HOST: "${XIAOZHI_REDIS_HOST:-redis}"
+      XIAOZHI_REDIS_PORT: "${XIAOZHI_REDIS_PORT:-6379}"
+      XIAOZHI_SERVER_PORT: "${XIAOZHI_SERVER_PORT:-8003}"
+      OPENAI_API_KEY: "${OPENAI_API_KEY:-}"
+    ports:
+      - "${MANAGER_BIND:-0.0.0.0}:${MANAGER_PORT:-8003}:8003/tcp"
+      - "${WEBSOCKET_BIND:-0.0.0.0}:${WEBSOCKET_PORT:-8007}:8007/tcp"
+      - "${MQTT_BIND:-0.0.0.0}:${MQTT_PORT:-2883}:2883/tcp"
+      - "${MQTT_TLS_BIND:-0.0.0.0}:${MQTT_TLS_PORT:-8883}:8883/tcp"
+      - "${UDP_BIND:-0.0.0.0}:${UDP_PORT:-8990}:8990/tcp"
+      - "${UDP_BIND:-0.0.0.0}:${UDP_PORT:-8990}:8990/udp"
+    volumes:
+      - xiaozhi_logs:/apps/logs
+      - xiaozhi_data:/apps/data
+
+volumes:
+  xiaozhi_logs:
+  xiaozhi_data:

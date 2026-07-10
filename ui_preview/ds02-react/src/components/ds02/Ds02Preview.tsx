@@ -2,6 +2,11 @@ import { useEffect, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
+import {
+  Ds02SettingsPanel,
+  type Ds02Theme,
+  type Ds02SettingsPanelProps,
+} from "@/components/ui/inline-dropdown";
 import TiltedDock from "@/components/ui/tilted-dock";
 import "./ds02.css";
 
@@ -31,6 +36,51 @@ const STATES: StateInfo[] = [
     title: "Device menu",
     detail:
       "Second press opens the black launcher menu; the TiltedDock appears at the bottom of the screen.",
+  },
+];
+
+const CIRCUIT_BUTTONS = [
+  {
+    id: "boot",
+    label: "BOOT",
+    gpio: "GPIO0",
+    status: "short press",
+    enabled: true,
+  },
+  {
+    id: "touch",
+    label: "TOUCH",
+    gpio: "NC",
+    status: "not mounted",
+    enabled: false,
+  },
+  {
+    id: "vol-up",
+    label: "VOL+",
+    gpio: "NC",
+    status: "not mounted",
+    enabled: false,
+  },
+  {
+    id: "vol-down",
+    label: "VOL-",
+    gpio: "NC",
+    status: "not mounted",
+    enabled: false,
+  },
+  {
+    id: "reset-nvs",
+    label: "NVS",
+    gpio: "NC",
+    status: "not mounted",
+    enabled: false,
+  },
+  {
+    id: "factory",
+    label: "FACTORY",
+    gpio: "NC",
+    status: "not mounted",
+    enabled: false,
   },
 ];
 
@@ -68,7 +118,13 @@ export function Ds02Preview() {
   const [dateText, setDateText] = useState("");
   const [offline, setOffline] = useState(!navigator.onLine);
   const [batteryLevel, setBatteryLevel] = useState<number | null>(null);
+  const [batteryCharging, setBatteryCharging] = useState(false);
+  const [lowBatteryNoticeVisible, setLowBatteryNoticeVisible] = useState(false);
   const [btAvailable, setBtAvailable] = useState<boolean | null>(null);
+  const [previewVolume, setPreviewVolume] = useState(70);
+  const [previewBrightness, setPreviewBrightness] = useState(75);
+  const [previewTheme, setPreviewTheme] = useState<Ds02Theme>("light");
+  const [deviceAecEnabled, setDeviceAecEnabled] = useState(true);
 
   // Clock.
   useEffect(() => {
@@ -105,6 +161,7 @@ export function Ds02Preview() {
     const nav = navigator as Navigator & {
       getBattery?: () => Promise<{
         level: number;
+        charging: boolean;
         addEventListener: (t: string, cb: () => void) => void;
         removeEventListener: (t: string, cb: () => void) => void;
       }>;
@@ -113,7 +170,10 @@ export function Ds02Preview() {
     let battery: Awaited<ReturnType<NonNullable<typeof nav.getBattery>>> | null = null;
     let active = true;
     const sync = () => {
-      if (battery) setBatteryLevel(battery.level);
+      if (battery) {
+        setBatteryLevel(battery.level);
+        setBatteryCharging(battery.charging);
+      }
     };
     nav.getBattery().then((b) => {
       if (!active) {
@@ -155,9 +215,29 @@ export function Ds02Preview() {
     };
   }, []);
 
+  useEffect(() => {
+    if (!lowBatteryNoticeVisible) return;
+    const id = window.setTimeout(() => setLowBatteryNoticeVisible(false), 2400);
+    return () => window.clearTimeout(id);
+  }, [lowBatteryNoticeVisible]);
+
   const state = STATES[stateIndex];
   const showDock = state.key === "black";
   const [activeTab, setActiveTab] = useState(1); // 1 = Home
+  const pressBoot = () => setStateIndex((i) => (i + 1) % STATES.length);
+  const togglePreviewWifi = () => setOffline((value) => !value);
+  const togglePreviewBluetooth = () => {
+    setBtAvailable((value) => !(value ?? false));
+  };
+  const togglePreviewTheme = () => {
+    setPreviewTheme((value) => (value === "light" ? "dark" : "light"));
+  };
+  const forceLowBattery = () => {
+    setBatteryLevel(0.1);
+    setBatteryCharging(false);
+    setLowBatteryNoticeVisible(false);
+    window.setTimeout(() => setLowBatteryNoticeVisible(true), 0);
+  };
 
   return (
     <main className="min-h-screen w-full grid place-items-center bg-[var(--ds-page-bg)] text-[var(--ds-text)] font-sans p-4 gap-5">
@@ -181,22 +261,8 @@ export function Ds02Preview() {
             {/* Standby wallpaper + status */}
             <div aria-hidden="true" className="ds02-standby absolute inset-0">
               <div className="ds02-overlay" />
-              <div className="absolute inset-0 grid justify-items-end items-start pt-3.5 pr-4 pb-4">
+              <div className="ds02-standby-clock absolute inset-x-0 bottom-0 grid justify-items-end items-start pr-4 pb-4">
                 <div className="relative z-[1] grid gap-2 justify-items-end text-right">
-                  <div className="flex items-center gap-2 text-white/90 drop-shadow-[0_1px_8px_rgba(0,0,0,0.85)]">
-                    <WifiIcon offline={offline} />
-                    {btAvailable !== null && (
-                      <span className="text-[10px] font-extrabold">
-                        {btAvailable ? "BT" : "BTx"}
-                      </span>
-                    )}
-                    {batteryLevel !== null && (
-                      <span className="inline-flex items-center gap-[3px] text-[11px] font-bold">
-                        <span>{Math.round(batteryLevel * 100)}</span>
-                        <BatteryBar level={batteryLevel} />
-                      </span>
-                    )}
-                  </div>
                   <div className="relative text-[56px] font-light leading-none drop-shadow-[0_2px_16px_rgba(0,0,0,0.78)]">
                     {time}
                   </div>
@@ -225,89 +291,150 @@ export function Ds02Preview() {
                 <DockPage
                   activeTab={activeTab}
                   onSelect={setActiveTab}
-                  offline={offline}
-                  batteryLevel={batteryLevel}
-                  btAvailable={btAvailable}
+                  settings={{
+                    offline,
+                    onToggleWifi: togglePreviewWifi,
+                    bluetoothAvailable: btAvailable,
+                    onToggleBluetooth: togglePreviewBluetooth,
+                    volume: previewVolume,
+                    onVolumeChange: setPreviewVolume,
+                    brightness: previewBrightness,
+                    onBrightnessChange: setPreviewBrightness,
+                    theme: previewTheme,
+                    onToggleTheme: togglePreviewTheme,
+                    aecEnabled: deviceAecEnabled,
+                    onToggleAec: () => setDeviceAecEnabled((value) => !value),
+                  }}
                 />
               )}
             </div>
+
+            <SystemStatusBar
+              offline={offline}
+              batteryLevel={batteryLevel}
+              batteryCharging={batteryCharging}
+              btAvailable={btAvailable}
+            />
+            <LowBatteryPill
+              visible={lowBatteryNoticeVisible}
+              batteryLevel={batteryLevel}
+            />
           </div>
         </div>
       </section>
 
       <section
         aria-label="Preview controls"
-        className="w-full max-w-[430px] grid grid-cols-[1fr_auto] gap-2.5 items-center px-3.5 py-3 border border-[var(--ds-panel-border)] rounded-lg bg-white/[0.03]"
+        className="w-full max-w-[430px] grid gap-3 px-3.5 py-3 border border-[var(--ds-panel-border)] rounded-lg bg-white/[0.03]"
       >
-        <div className="text-[var(--ds-muted)] text-[13px] leading-snug">
-          <strong className="text-[var(--ds-text)]">{state.title}</strong>
-          <br />
-          {state.detail}
+        <div className="grid grid-cols-[1fr_auto] gap-2.5 items-center">
+          <div className="text-[var(--ds-muted)] text-[13px] leading-snug">
+            <strong className="text-[var(--ds-text)]">{state.title}</strong>
+            <br />
+            {state.detail}
+          </div>
+          <Button
+            type="button"
+            onClick={pressBoot}
+          >
+            Press GPIO0
+          </Button>
         </div>
-        <Button
-          type="button"
-          onClick={() => setStateIndex((i) => (i + 1) % STATES.length)}
-        >
-          Press GPIO0
-        </Button>
+
+        <div className="grid grid-cols-3 gap-2">
+          {CIRCUIT_BUTTONS.map((item) => (
+            <button
+              key={item.id}
+              type="button"
+              disabled={!item.enabled}
+              onClick={item.id === "boot" ? pressBoot : undefined}
+              className="min-h-[48px] rounded-md border border-white/10 bg-black/20 px-2 py-1.5 text-left disabled:opacity-35 disabled:cursor-not-allowed enabled:hover:bg-white/[0.06] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300"
+            >
+              <span className="block text-[11px] font-bold leading-tight text-white">
+                {item.label}
+              </span>
+              <span className="block text-[10px] font-semibold leading-tight text-white/60">
+                {item.gpio}
+              </span>
+              <span className="block text-[9px] leading-tight text-white/40">
+                {item.status}
+              </span>
+            </button>
+          ))}
+        </div>
+
+        <div className="grid grid-cols-[1fr_auto] gap-2 items-center border-t border-white/10 pt-3">
+          <div className="text-[12px] font-semibold text-white/70">
+            Function button
+          </div>
+          <Button
+            type="button"
+            variant="destructive"
+            onClick={forceLowBattery}
+          >
+            Pin yếu
+          </Button>
+        </div>
       </section>
     </main>
   );
 }
 
-function WifiIcon({ offline }: { offline: boolean }) {
-  return (
-    <div
-      aria-hidden
-      className={`relative w-[19px] h-[14px] text-white ${
-        offline ? "after:content-[''] after:absolute after:left-px after:top-1.5 after:w-5 after:h-0.5 after:rounded-full after:bg-current after:rotate-[-42deg] after:origin-center" : ""
-      }`}
-    >
-      <span className="absolute left-1/2 bottom-0 w-[18px] h-[13px] border-2 border-current border-t-transparent border-l-transparent border-r-transparent rounded-full -translate-x-1/2" />
-      <span className="absolute left-1/2 bottom-0 w-3 h-2 border-2 border-current border-t-transparent border-l-transparent border-r-transparent rounded-full -translate-x-1/2" />
-      <span className="absolute left-1/2 bottom-0 w-1 h-1 bg-current rounded-full -translate-x-1/2" />
-    </div>
-  );
-}
-
-function BatteryBar({ level }: { level: number }) {
-  const pct = Math.max(0, Math.min(1, level));
-  return (
-    <span
-      aria-hidden
-      className="relative w-6 h-3 border-[1.5px] border-current rounded"
-      style={
-        {
-          "--battery-level": pct,
-        } as React.CSSProperties
-      }
-    >
-      <span
-        className="absolute left-0.5 top-0.5 h-1.5 rounded-sm bg-current"
-        style={{ width: "calc((100% - 4px) * var(--battery-level, 0))" }}
-      />
-      <span className="absolute -right-1 top-[3px] w-0.5 h-[5px] rounded-r bg-current" />
-    </span>
-  );
-}
-
-function LauncherStatus({
+function SystemStatusBar({
   offline,
   batteryLevel,
+  batteryCharging,
   btAvailable,
 }: {
   offline: boolean;
   batteryLevel: number | null;
+  batteryCharging: boolean;
   btAvailable: boolean | null;
+}) {
+  const level = batteryLevel ?? 0.99;
+  const batteryTone = getBatteryTone(level, batteryCharging);
+  const wifiTone = offline ? "text-rose-400" : "text-emerald-300";
+  const btTone = btAvailable ? "text-sky-300" : "text-slate-500";
+
+  return (
+    <div className="ds02-system-bar" aria-hidden="true">
+      <div className="inline-flex items-center gap-1.5 pr-0.5 text-[9px] font-bold leading-none">
+        <span className={wifiTone}>
+          <MiniWifiIcon offline={offline} />
+        </span>
+        <span className={btTone}>{btAvailable ? "BT" : "BTx"}</span>
+        <span className={batteryTone}>{Math.round(level * 100)}</span>
+        <span className={batteryTone}>
+          <MiniBatteryBar level={level} />
+        </span>
+      </div>
+    </div>
+  );
+}
+
+function getBatteryTone(level: number, charging: boolean) {
+  if (charging) return "text-cyan-300";
+  if (level <= 0.15) return "text-rose-400";
+  if (level <= 0.35) return "text-amber-300";
+  return "text-emerald-300";
+}
+
+function LowBatteryPill({
+  visible,
+  batteryLevel,
+}: {
+  visible: boolean;
+  batteryLevel: number | null;
 }) {
   const level = batteryLevel ?? 0.99;
 
   return (
-    <div className="inline-flex items-center gap-1 pr-0.5 text-[9px] font-bold leading-none text-white/40">
-      <MiniWifiIcon offline={offline} />
-      <span className={btAvailable === false ? "opacity-60" : undefined}>BT</span>
-      <span>{Math.round(level * 100)}</span>
-      <MiniBatteryBar level={level} />
+    <div
+      aria-hidden={!visible}
+      className="ds02-low-battery-pill"
+      data-visible={visible ? "true" : "false"}
+    >
+      Pin yếu {Math.round(level * 100)}%
     </div>
   );
 }
@@ -365,38 +492,35 @@ const TAB_PAGES: Record<number, { title: string; body: string }> = {
 function DockPage({
   activeTab,
   onSelect,
-  offline,
-  batteryLevel,
-  btAvailable,
+  settings,
 }: {
   activeTab: number;
   onSelect: (id: number) => void;
-  offline: boolean;
-  batteryLevel: number | null;
-  btAvailable: boolean | null;
+  settings: Ds02SettingsPanelProps;
 }) {
   const isHome = activeTab === 1;
+  const isProfile = activeTab === 4;
+  const isSettings = activeTab === 6;
   return (
     <div className="absolute inset-0 flex flex-col text-white">
       {/* Tab content fills the screen above the dock. */}
       <div className="flex-1 relative overflow-hidden">
         {isHome ? (
           <div
-            className="absolute inset-x-0 top-0 bottom-[4rem] overflow-hidden"
+            className="ds02-dock-page"
           >
-            <Calendar
-              compact
-              headerAction={
-                <LauncherStatus
-                  offline={offline}
-                  batteryLevel={batteryLevel}
-                  btAvailable={btAvailable}
-                />
-              }
-            />
+            <Calendar compact />
+          </div>
+        ) : isProfile ? (
+          <div className="ds02-dock-page bg-black">
+            <ProfileAvatar3D speaking={false} />
+          </div>
+        ) : isSettings ? (
+          <div className="ds02-dock-page bg-black">
+            <Ds02SettingsPanel {...settings} />
           </div>
         ) : (
-          <div className="absolute inset-0 grid place-items-center px-6 pb-14 text-center">
+          <div className="ds02-dock-page grid place-items-center px-6 text-center">
             <div>
               <div className="text-[10px] uppercase tracking-widest text-white/50">
                 Tab #{activeTab}
@@ -415,10 +539,28 @@ function DockPage({
       {/* Bottom dock navigation. */}
       <TiltedDock
         variant="inset"
-        scale={0.78}
+        scale={0.72}
         activeId={activeTab}
         onSelect={onSelect}
       />
+    </div>
+  );
+}
+
+function ProfileAvatar3D({ speaking }: { speaking: boolean }) {
+  return (
+    <div
+      className="profile-avatar-screen"
+      data-speaking={speaking ? "true" : "false"}
+      aria-label="Profile voice avatar"
+    >
+      <div className="profile-avatar-stage">
+        <div className="profile-avatar-orb" aria-hidden>
+          <span className="profile-avatar-cloud profile-avatar-cloud-a" />
+          <span className="profile-avatar-cloud profile-avatar-cloud-b" />
+          <span className="profile-avatar-cloud profile-avatar-cloud-c" />
+        </div>
+      </div>
     </div>
   );
 }

@@ -57,16 +57,16 @@ export default function TiltedDock({
 
   const wrapperClass =
     variant === "inset"
-      ? `absolute inset-x-0 bottom-4 z-10 flex justify-center ${className}`
+      ? `absolute inset-x-0 bottom-2 z-10 flex justify-center ${className}`
       : `fixed bottom-10 left-1/2 -translate-x-1/2 z-50 ${className}`;
 
   return (
     <div className={wrapperClass}>
       <motion.div
-        className="flex gap-6 px-4 py-2 rounded-2xl
-                   backdrop-blur-2xl bg-white/30 dark:bg-black/30
-                   border border-white/20 dark:border-white/10
-                   shadow-[0_15px_40px_rgba(0,0,0,0.35)] origin-bottom"
+        className="flex w-[330px] max-w-[92%] justify-between gap-2 rounded-xl border border-white/[0.14]
+                   bg-[rgba(8,14,22,0.66)] px-3 py-1.5
+                   shadow-[0_10px_28px_rgba(0,0,0,0.52),inset_0_1px_0_rgba(255,255,255,0.14),inset_0_-1px_0_rgba(255,255,255,0.05)]
+                   backdrop-blur-2xl origin-bottom"
         style={{
           transformStyle: "preserve-3d",
           transform: `scale(${scale})`,
@@ -98,17 +98,22 @@ export default function TiltedDock({
               }}
               transition={{ type: "spring", stiffness: 200, damping: 18 }}
               style={{ transformStyle: "preserve-3d" }}
-              className="relative flex flex-col items-center justify-center bg-transparent border-0 p-0 cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-sky-400 rounded-md"
+              className={
+                "relative flex h-8 w-8 flex-col items-center justify-center border-0 p-0 cursor-pointer outline-none rounded-md transition-colors duration-200 focus-visible:ring-2 focus-visible:ring-cyan-300 " +
+                (isActive
+                  ? "bg-cyan-300/[0.10] shadow-[inset_0_0_0_1px_rgba(103,232,249,0.24),0_0_16px_rgba(14,165,233,0.20)]"
+                  : "bg-transparent hover:bg-white/[0.06]")
+              }
             >
               {/* Icon — color flips when active or hovered. */}
               <motion.div
                 animate={{ rotateX: 0, rotateY: 0 }}
                 transition={{ type: "spring", stiffness: 150, damping: 15 }}
                 className={
-                  "scale-[0.85] transition-colors duration-200 " +
+                  "scale-[0.72] transition-colors duration-200 " +
                   (isLit
-                    ? "text-sky-400 dark:text-sky-300"
-                    : "text-gray-900 dark:text-gray-100")
+                    ? "text-cyan-300"
+                    : "text-slate-200/75")
                 }
               >
                 {item.icon}
@@ -117,7 +122,7 @@ export default function TiltedDock({
               {/* Label — always hidden (bottom-tab style). */}
               <motion.span
                 className="absolute -bottom-5 text-[10px] font-medium
-                           text-gray-800 dark:text-gray-200 whitespace-nowrap"
+                           text-slate-200/75 whitespace-nowrap"
                 animate={{ opacity: 0, y: 5 }}
                 transition={{ duration: 0.3 }}
                 aria-hidden

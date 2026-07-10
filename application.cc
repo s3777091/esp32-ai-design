@@ -241,6 +241,12 @@ void Application::Run() {
         }
 
         if (bits & MAIN_EVENT_VAD_CHANGE) {
+            const bool voice_active = GetDeviceState() == kDeviceStateListening && audio_service_.IsVoiceDetected();
+            auto display = Board::GetInstance().GetDisplay();
+            if (auto* home_display = dynamic_cast<home::Ds02HomeDisplay*>(display)) {
+                home_display->SetProfileVoiceActive(voice_active);
+            }
+
             if (GetDeviceState() == kDeviceStateListening) {
                 auto led = Board::GetInstance().GetLed();
                 led->OnStateChanged();
