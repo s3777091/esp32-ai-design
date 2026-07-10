@@ -3,6 +3,21 @@
 
 .ds02-screen {
   --ds02-system-bar-height: 20px;
+  --ds02-brightness-dim: 0.25;
+  --ds02-wallpaper-image: url("/mountain.png");
+  --ds02-app-font: "Segoe UI", "Noto Sans", Arial, sans-serif;
+  font-family: var(--ds02-app-font);
+}
+
+.ds02-screen::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 60;
+  background: #000;
+  opacity: var(--ds02-brightness-dim);
+  pointer-events: none;
+  transition: opacity 120ms ease;
 }
 
 .ds02-screen[data-state="dim"] .ds02-standby {
@@ -14,18 +29,40 @@
   opacity: 0;
 }
 
+.ds02-screen[data-theme="dark"] .ds02-launcher {
+  background: #000;
+  color: #fff;
+}
+
+.ds02-screen[data-theme="light"] .ds02-launcher {
+  background: #f4f6fb;
+  color: #0f172a;
+}
+
 .ds02-standby {
   display: grid;
   justify-items: end;
   align-items: start;
   padding: 14px 16px 16px;
   background:
-    linear-gradient(180deg, rgba(0, 0, 0, 0.08), rgba(0, 0, 0, 0.58)),
-    radial-gradient(circle at 68% 18%, rgba(255, 255, 255, 0.72) 0 3%, transparent 4%),
-    radial-gradient(circle at 22% 32%, rgba(255, 255, 255, 0.62) 0 8%, transparent 9%),
-    radial-gradient(circle at 39% 27%, rgba(255, 255, 255, 0.45) 0 11%, transparent 12%),
-    linear-gradient(158deg, #8ecbff 0 36%, #d9e7f5 37% 49%, #86a5bb 50% 61%, #8b7966 62% 100%);
+    linear-gradient(180deg, rgba(0, 0, 0, 0.04), rgba(0, 0, 0, 0.6)),
+    var(--ds02-wallpaper-image);
+  background-position: center;
+  background-size: cover;
   transition: opacity 180ms ease, filter 180ms ease;
+}
+
+.ds02-styled-text {
+  font-family: inherit;
+  color: var(--ds02-text-color, #fff);
+}
+
+.ds02-screen[data-text-paint="gradient"] .ds02-styled-text {
+  background: var(--ds02-text-gradient);
+  background-clip: text;
+  -webkit-background-clip: text;
+  color: transparent;
+  -webkit-text-fill-color: transparent;
 }
 
 .ds02-overlay {
@@ -34,7 +71,8 @@
   background:
     linear-gradient(165deg, transparent 0 47%, rgba(49, 38, 30, 0.72) 48% 54%, transparent 55%),
     linear-gradient(20deg, transparent 0 57%, rgba(34, 43, 52, 0.42) 58% 64%, transparent 65%);
-  opacity: 0.8;
+  display: none;
+  opacity: 0;
   pointer-events: none;
 }
 
@@ -49,6 +87,15 @@
   padding: 0 8px;
   background: #000;
   pointer-events: none;
+  transition: background-color 180ms ease, color 180ms ease;
+}
+
+.ds02-screen[data-theme="light"][data-state="black"] .ds02-system-bar {
+  background: #f4f6fb;
+}
+
+.ds02-screen[data-theme="dark"][data-state="black"] .ds02-system-bar {
+  background: #000;
 }
 
 .ds02-low-battery-pill {
@@ -98,6 +145,14 @@
 }
 
 .ds02-settings-scroll::-webkit-scrollbar {
+  display: none;
+}
+
+.ds02-style-list {
+  scrollbar-width: none;
+}
+
+.ds02-style-list::-webkit-scrollbar {
   display: none;
 }
 

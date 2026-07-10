@@ -1,8 +1,10 @@
 #include "ds02_home_display.h"
 
+#include "assets.h"
 #include "assets/lang_config.h"
 #include "board.h"
 #include "lvgl_theme.h"
+#include "settings.h"
 
 #include <algorithm>
 #include <array>
@@ -30,11 +32,17 @@ constexpr int kDockHeight = 38;
 constexpr int kDockBottomMargin = 4;
 constexpr int kLowBatteryThreshold = 15;
 constexpr size_t kProfileDockIndex = 3;
+constexpr size_t kSettingsDockIndex = 5;
 
 struct DockItem {
     const char* icon;
     const char* title;
     const char* body;
+};
+
+struct BackgroundItem {
+    const char* file;
+    const char* title;
 };
 
 #if defined(FONT_AWESOME_CALENDAR_DAYS) && defined(FONT_AWESOME_MAGNIFYING_GLASS) && \
@@ -45,7 +53,7 @@ constexpr std::array<DockItem, 6> kDockItems = {{
     {FONT_AWESOME_CALENDAR_DAYS, "Calendar", ""},
     {FONT_AWESOME_MAGNIFYING_GLASS, "Search", "Tim kiem thiet bi, bai hat, cai dat..."},
     {FONT_AWESOME_BELL, "Alerts", "Khong co thong bao moi."},
-    {FONT_AWESOME_USER, "Profile", "Nguoi dung: ekko.huynh"},
+    {FONT_AWESOME_USER, "Ekko Robot", "Wake word: hi ekko"},
     {FONT_AWESOME_MUSIC, "Music", "Chua co bai hat nao dang phat."},
     {FONT_AWESOME_GEAR, "Settings", "Wi-Fi, am thanh, hien thi, ngon ngu..."},
 }};
@@ -55,7 +63,7 @@ constexpr std::array<DockItem, 6> kDockItems = {{
     {"CAL", "Calendar", ""},
     {"SRC", "Search", "Tim kiem thiet bi, bai hat, cai dat..."},
     {"ALT", "Alerts", "Khong co thong bao moi."},
-    {"USR", "Profile", "Nguoi dung: ekko.huynh"},
+    {"USR", "Ekko Robot", "Wake word: hi ekko"},
     {"MUS", "Music", "Chua co bai hat nao dang phat."},
     {"SET", "Settings", "Wi-Fi, am thanh, hien thi, ngon ngu..."},
 }};
@@ -63,6 +71,29 @@ constexpr std::array<DockItem, 6> kDockItems = {{
 
 constexpr std::array<const char*, 7> kCalendarWeekdays = {{
     "SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"
+}};
+
+constexpr std::array<BackgroundItem, 20> kBackgroundItems = {{
+    {"mountain.png", "Mountain"},
+    {"abtract.png", "Abstract"},
+    {"anime_light.png", "Anime Light"},
+    {"cat_dog_anime.png", "Cat Dog Anime"},
+    {"cat_dog_chill.png", "Cat Dog Chill"},
+    {"cat_dog_sleep.png", "Cat Dog Sleep"},
+    {"europe.png", "Europe"},
+    {"fantacy_anime.png", "Fantacy Anime"},
+    {"follower.png", "Follower"},
+    {"haivan.png", "Hai Van"},
+    {"jp_temple.png", "JP Temple"},
+    {"linh_ung_pagoda.png", "Linh Ung Pagoda"},
+    {"morning_beach.png", "Morning Beach"},
+    {"night_light.png", "Night Light"},
+    {"pixel.png", "Pixel"},
+    {"romance_anime.png", "Romance Anime"},
+    {"rong_river.png", "Rong River"},
+    {"rooftop.png", "Rooftop"},
+    {"rubic.png", "Rubic"},
+    {"sa_mac.png", "Sa Mac"},
 }};
 
 lv_color_t Color(uint32_t value) {
@@ -108,6 +139,90 @@ int Clamp(int value, int low, int high) {
 
 bool TextEquals(const char* lhs, const char* rhs) {
     return lhs != nullptr && rhs != nullptr && std::strcmp(lhs, rhs) == 0;
+}
+
+bool IsEncodedRasterImage(const void* data, size_t size) {
+    if (data == nullptr || size < 4) {
+        return false;
+    }
+
+    const auto* bytes = static_cast<const uint8_t*>(data);
+    const bool png = size >= 8 &&
+                     bytes[0] == 0x89 && bytes[1] == 0x50 &&
+                     bytes[2] == 0x4e && bytes[3] == 0x47;
+    const bool jpg = size >= 3 &&
+                     bytes[0] == 0xff && bytes[1] == 0xd8 && bytes[2] == 0xff;
+    const bool gif = size >= 3 &&
+                     bytes[0] == 'G' && bytes[1] == 'I' && bytes[2] == 'F';
+    return png || jpg || gif;
+}
+
+std::unique_ptr<LvglImage> CreateBackgroundImage(void* data, size_t size) {
+    if (IsEncodedRasterImage(data, size)) {
+        return std::make_unique<LvglRawImage>(data, size);
+    }
+    return std::make_unique<LvglCBinImage>(data);
+}
+
+bool GetBackgroundAssetData(const char* file, void*& ptr, size_t& size) {
+    auto& assets = Assets::GetInstance();
+    if (assets.GetAssetData(file, ptr, size)) {
+        return true;
+    }
+
+    char image_path[48];
+    std::snprintf(image_path, sizeof(image_path), "image/%s", file);
+    return assets.GetAssetData(image_path, ptr, size);
+}
+
+bool GetImageHeader(const lv_img_dsc_t* image_dsc, lv_image_header_t& header) {
+    if (image_dsc == nullptr) {
+        return false;
+    }
+
+    header = image_dsc->header;
+    if (header.w > 0 && header.h > 0) {
+        return true;
+    }
+
+    return lv_image_decoder_get_info(image_dsc, &header) == LV_RESULT_OK &&
+           header.w > 0 && header.h > 0;
+}
+
+void ApplyCoverImage(lv_obj_t* container, lv_obj_t* image_obj, const lv_img_dsc_t* image_dsc,
+                     int fallback_width, int fallback_height) {
+    if (container == nullptr || image_obj == nullptr) {
+        return;
+    }
+
+    if (image_dsc == nullptr) {
+        lv_image_set_src(image_obj, nullptr);
+        lv_obj_add_flag(image_obj, LV_OBJ_FLAG_HIDDEN);
+        return;
+    }
+
+    lv_image_set_src(image_obj, image_dsc);
+    lv_obj_clear_flag(image_obj, LV_OBJ_FLAG_HIDDEN);
+
+    lv_image_header_t header = {};
+    if (GetImageHeader(image_dsc, header)) {
+        int box_width = lv_obj_get_width(container);
+        int box_height = lv_obj_get_height(container);
+        if (box_width <= 0) {
+            box_width = fallback_width;
+        }
+        if (box_height <= 0) {
+            box_height = fallback_height;
+        }
+
+        const int scale_width = std::max(1, box_width * 256 / static_cast<int>(header.w));
+        const int scale_height = std::max(1, box_height * 256 / static_cast<int>(header.h));
+        lv_image_set_scale(image_obj, std::max(scale_width, scale_height));
+    } else {
+        lv_image_set_scale(image_obj, 256);
+    }
+
+    lv_obj_center(image_obj);
 }
 
 lv_color_t BatteryStatusColor(int level, bool charging) {
@@ -178,6 +293,14 @@ void Ds02HomeDisplay::SetupUI() {
     CreateLauncherObjects();
     CreateSystemBarObjects();
     CreateLowBatteryNotificationObjects();
+    CreateBackgroundGalleryObjects();
+
+    Settings settings("display", false);
+    background_index_ = static_cast<size_t>(
+        Clamp(settings.GetInt("ds02_background", 0), 0, static_cast<int>(kBackgroundItems.size()) - 1)
+    );
+    persisted_background_index_ = background_index_;
+    ApplyBackgroundIndex(background_index_);
 
     esp_timer_create_args_t timer_args = {
         .callback = OnRefreshTimer,
@@ -222,6 +345,10 @@ void Ds02HomeDisplay::CreateStandbyObjects() {
     lv_obj_set_style_bg_color(wallpaper_, Color(0x1b2630), 0);
     lv_obj_set_style_bg_grad_color(wallpaper_, Color(0x8b7966), 0);
     lv_obj_set_style_bg_grad_dir(wallpaper_, LV_GRAD_DIR_VER, 0);
+
+    wallpaper_image_obj_ = lv_image_create(wallpaper_);
+    lv_obj_add_flag(wallpaper_image_obj_, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_center(wallpaper_image_obj_);
 
     dim_overlay_ = lv_obj_create(standby_layer_);
     lv_obj_set_size(dim_overlay_, LV_PCT(100), LV_PCT(100));
@@ -289,6 +416,7 @@ void Ds02HomeDisplay::CreateLauncherObjects() {
 
     CreateCalendarObjects();
     CreateProfileObjects();
+    CreateSettingsObjects();
 
     launcher_title_label_ = lv_label_create(launcher_content_);
     lv_obj_set_width(launcher_title_label_, safe_width - 32);
@@ -340,6 +468,7 @@ void Ds02HomeDisplay::CreateSystemBarObjects() {
     wifi_label_ = lv_label_create(status_row_);
     bluetooth_label_ = lv_label_create(status_row_);
     battery_label_ds02_ = lv_label_create(status_row_);
+    battery_icon_root_ = lv_obj_create(status_row_);
 
     lv_obj_set_style_text_color(wifi_label_, Color(0xffffff), 0);
     lv_obj_set_style_text_color(bluetooth_label_, Color(0x8f98a3), 0);
@@ -347,6 +476,35 @@ void Ds02HomeDisplay::CreateSystemBarObjects() {
     lv_obj_set_style_text_font(wifi_label_, &BUILTIN_ICON_FONT, 0);
     lv_obj_set_style_text_font(bluetooth_label_, &BUILTIN_TEXT_FONT, 0);
     lv_obj_set_style_text_font(battery_label_ds02_, &BUILTIN_TEXT_FONT, 0);
+
+    lv_obj_set_size(battery_icon_root_, 18, 10);
+    ClearBoxStyle(battery_icon_root_);
+    lv_obj_set_style_bg_opa(battery_icon_root_, LV_OPA_TRANSP, 0);
+
+    battery_icon_body_ = lv_obj_create(battery_icon_root_);
+    lv_obj_set_size(battery_icon_body_, 14, 8);
+    ClearBoxStyle(battery_icon_body_);
+    lv_obj_set_pos(battery_icon_body_, 0, 1);
+    lv_obj_set_style_radius(battery_icon_body_, 2, 0);
+    lv_obj_set_style_bg_opa(battery_icon_body_, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(battery_icon_body_, 1, 0);
+    lv_obj_set_style_border_color(battery_icon_body_, Color(0xffffff), 0);
+
+    battery_icon_fill_ = lv_obj_create(battery_icon_body_);
+    lv_obj_set_size(battery_icon_fill_, 10, 4);
+    ClearBoxStyle(battery_icon_fill_);
+    lv_obj_set_pos(battery_icon_fill_, 2, 2);
+    lv_obj_set_style_radius(battery_icon_fill_, 1, 0);
+    lv_obj_set_style_bg_color(battery_icon_fill_, Color(0xffffff), 0);
+    lv_obj_set_style_bg_opa(battery_icon_fill_, LV_OPA_COVER, 0);
+
+    battery_icon_nub_ = lv_obj_create(battery_icon_root_);
+    lv_obj_set_size(battery_icon_nub_, 2, 4);
+    ClearBoxStyle(battery_icon_nub_);
+    lv_obj_set_pos(battery_icon_nub_, 15, 3);
+    lv_obj_set_style_radius(battery_icon_nub_, 1, 0);
+    lv_obj_set_style_bg_color(battery_icon_nub_, Color(0xffffff), 0);
+    lv_obj_set_style_bg_opa(battery_icon_nub_, LV_OPA_COVER, 0);
 }
 
 void Ds02HomeDisplay::CreateLowBatteryNotificationObjects() {
@@ -513,6 +671,201 @@ void Ds02HomeDisplay::CreateProfileObjects() {
     lv_obj_align(highlight, LV_ALIGN_TOP_LEFT, 27, 10);
 }
 
+void Ds02HomeDisplay::CreateSettingsObjects() {
+    const int safe_width = width_ > 0 ? width_ : 320;
+    const int safe_height = height_ > 0 ? height_ : 240;
+    const int content_height = std::max(120, safe_height - kSystemBarHeight - kDockHeight - kDockBottomMargin - 8);
+    const int row_width = Clamp(safe_width - 24, 216, 296);
+
+    settings_root_ = lv_obj_create(launcher_content_);
+    lv_obj_set_size(settings_root_, safe_width, content_height);
+    ClearBoxStyle(settings_root_);
+    lv_obj_set_style_bg_color(settings_root_, Color(0x050609), 0);
+    lv_obj_set_style_bg_opa(settings_root_, LV_OPA_COVER, 0);
+    lv_obj_align(settings_root_, LV_ALIGN_TOP_MID, 0, 0);
+    lv_obj_add_flag(settings_root_, LV_OBJ_FLAG_HIDDEN);
+
+    auto* title = lv_label_create(settings_root_);
+    lv_obj_set_style_text_color(title, Color(0xffffff), 0);
+    lv_obj_set_style_text_font(title, &BUILTIN_TEXT_FONT, 0);
+    lv_label_set_text(title, "Settings");
+    lv_obj_align(title, LV_ALIGN_TOP_LEFT, 14, 10);
+
+    auto* wake_row = lv_obj_create(settings_root_);
+    lv_obj_set_size(wake_row, row_width, 38);
+    ClearBoxStyle(wake_row);
+    lv_obj_set_style_radius(wake_row, 8, 0);
+    lv_obj_set_style_bg_color(wake_row, Color(0x111827), 0);
+    lv_obj_set_style_bg_opa(wake_row, LV_OPA_COVER, 0);
+    lv_obj_set_style_border_width(wake_row, 1, 0);
+    lv_obj_set_style_border_color(wake_row, Color(0x273241), 0);
+    lv_obj_align(wake_row, LV_ALIGN_TOP_MID, 0, 38);
+
+    auto* wake_title = lv_label_create(wake_row);
+    lv_obj_set_style_text_color(wake_title, Color(0xf8fafc), 0);
+    lv_obj_set_style_text_font(wake_title, &BUILTIN_TEXT_FONT, 0);
+    lv_label_set_text(wake_title, "Wake word");
+    lv_obj_align(wake_title, LV_ALIGN_LEFT_MID, 10, -5);
+
+    auto* wake_value = lv_label_create(wake_row);
+    lv_obj_set_style_text_color(wake_value, Color(0x67e8f9), 0);
+    lv_obj_set_style_text_font(wake_value, &BUILTIN_TEXT_FONT, 0);
+    lv_label_set_text(wake_value, "hi ekko");
+    lv_obj_align(wake_value, LV_ALIGN_RIGHT_MID, -10, 5);
+
+    auto* background_row = lv_obj_create(settings_root_);
+    lv_obj_set_size(background_row, row_width, 42);
+    ClearBoxStyle(background_row);
+    lv_obj_set_style_radius(background_row, 8, 0);
+    lv_obj_set_style_bg_color(background_row, Color(0x111827), 0);
+    lv_obj_set_style_bg_opa(background_row, LV_OPA_COVER, 0);
+    lv_obj_set_style_border_width(background_row, 1, 0);
+    lv_obj_set_style_border_color(background_row, Color(0x273241), 0);
+    lv_obj_add_flag(background_row, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_event_cb(background_row, OnSettingsBackgroundClicked, LV_EVENT_CLICKED, this);
+    lv_obj_align(background_row, LV_ALIGN_TOP_MID, 0, 84);
+
+    auto* background_title = lv_label_create(background_row);
+    lv_obj_set_style_text_color(background_title, Color(0xf8fafc), 0);
+    lv_obj_set_style_text_font(background_title, &BUILTIN_TEXT_FONT, 0);
+    lv_label_set_text(background_title, "Change background");
+    lv_obj_align(background_title, LV_ALIGN_LEFT_MID, 10, -6);
+
+    settings_background_value_label_ = lv_label_create(background_row);
+    lv_obj_set_width(settings_background_value_label_, row_width - 48);
+    lv_obj_set_style_text_align(settings_background_value_label_, LV_TEXT_ALIGN_LEFT, 0);
+    lv_obj_set_style_text_color(settings_background_value_label_, Color(0x93a4b8), 0);
+    lv_obj_set_style_text_font(settings_background_value_label_, &BUILTIN_TEXT_FONT, 0);
+    lv_label_set_long_mode(settings_background_value_label_, LV_LABEL_LONG_DOT);
+    lv_obj_align(settings_background_value_label_, LV_ALIGN_LEFT_MID, 10, 8);
+
+    auto* chevron = lv_label_create(background_row);
+    lv_obj_set_style_text_color(chevron, Color(0x93a4b8), 0);
+    lv_obj_set_style_text_font(chevron, &BUILTIN_TEXT_FONT, 0);
+    lv_label_set_text(chevron, ">");
+    lv_obj_align(chevron, LV_ALIGN_RIGHT_MID, -10, 0);
+
+    RefreshSettingsPage();
+}
+
+void Ds02HomeDisplay::CreateBackgroundGalleryObjects() {
+    if (root_ == nullptr) {
+        return;
+    }
+
+    const int safe_width = width_ > 0 ? width_ : 320;
+    const int safe_height = height_ > 0 ? height_ : 240;
+    const int panel_width = Clamp(safe_width - 24, 216, 296);
+    const int panel_height = Clamp(safe_height - 34, 178, 206);
+    const int preview_width = panel_width - 20;
+    const int preview_height = Clamp(panel_height - 70, 104, 142);
+
+    background_gallery_overlay_ = lv_obj_create(root_);
+    lv_obj_set_size(background_gallery_overlay_, LV_PCT(100), LV_PCT(100));
+    ClearBoxStyle(background_gallery_overlay_);
+    lv_obj_set_style_bg_color(background_gallery_overlay_, Color(0x000000), 0);
+    lv_obj_set_style_bg_opa(background_gallery_overlay_, LV_OPA_70, 0);
+    lv_obj_add_flag(background_gallery_overlay_, LV_OBJ_FLAG_HIDDEN);
+
+    background_gallery_panel_ = lv_obj_create(background_gallery_overlay_);
+    lv_obj_set_size(background_gallery_panel_, panel_width, panel_height);
+    ClearBoxStyle(background_gallery_panel_);
+    lv_obj_set_style_radius(background_gallery_panel_, 8, 0);
+    lv_obj_set_style_bg_color(background_gallery_panel_, Color(0x070a10), 0);
+    lv_obj_set_style_bg_opa(background_gallery_panel_, LV_OPA_COVER, 0);
+    lv_obj_set_style_border_width(background_gallery_panel_, 1, 0);
+    lv_obj_set_style_border_color(background_gallery_panel_, Color(0x263142), 0);
+    lv_obj_set_style_shadow_width(background_gallery_panel_, 18, 0);
+    lv_obj_set_style_shadow_color(background_gallery_panel_, Color(0x000000), 0);
+    lv_obj_set_style_shadow_opa(background_gallery_panel_, LV_OPA_70, 0);
+    lv_obj_center(background_gallery_panel_);
+
+    auto* header = lv_label_create(background_gallery_panel_);
+    lv_obj_set_style_text_color(header, Color(0xffffff), 0);
+    lv_obj_set_style_text_font(header, &BUILTIN_TEXT_FONT, 0);
+    lv_label_set_text(header, "Background");
+    lv_obj_align(header, LV_ALIGN_TOP_LEFT, 10, 10);
+
+    auto* close_button = lv_obj_create(background_gallery_panel_);
+    lv_obj_set_size(close_button, 26, 26);
+    ClearBoxStyle(close_button);
+    lv_obj_set_style_radius(close_button, 6, 0);
+    lv_obj_set_style_bg_color(close_button, Color(0x111827), 0);
+    lv_obj_set_style_bg_opa(close_button, LV_OPA_TRANSP, 0);
+    lv_obj_add_flag(close_button, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_event_cb(close_button, OnBackgroundGalleryCloseClicked, LV_EVENT_CLICKED, this);
+    lv_obj_align(close_button, LV_ALIGN_TOP_RIGHT, -6, 5);
+
+    auto* close_label = lv_label_create(close_button);
+    lv_obj_set_style_text_color(close_label, Color(0xd8dee8), 0);
+    lv_obj_set_style_text_font(close_label, &BUILTIN_TEXT_FONT, 0);
+    lv_label_set_text(close_label, "X");
+    lv_obj_center(close_label);
+
+    background_preview_box_ = lv_obj_create(background_gallery_panel_);
+    lv_obj_set_size(background_preview_box_, preview_width, preview_height);
+    ClearBoxStyle(background_preview_box_);
+    lv_obj_set_style_radius(background_preview_box_, 6, 0);
+    lv_obj_set_style_clip_corner(background_preview_box_, true, 0);
+    lv_obj_set_style_bg_color(background_preview_box_, Color(0x111827), 0);
+    lv_obj_set_style_bg_opa(background_preview_box_, LV_OPA_COVER, 0);
+    lv_obj_set_style_border_width(background_preview_box_, 1, 0);
+    lv_obj_set_style_border_color(background_preview_box_, Color(0x273241), 0);
+    lv_obj_add_flag(background_preview_box_, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_event_cb(background_preview_box_, OnBackgroundGalleryGesture, LV_EVENT_GESTURE, this);
+    lv_obj_align(background_preview_box_, LV_ALIGN_TOP_MID, 0, 42);
+
+    background_preview_image_obj_ = lv_image_create(background_preview_box_);
+    lv_obj_add_flag(background_preview_image_obj_, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_center(background_preview_image_obj_);
+
+    auto* prev_button = lv_obj_create(background_preview_box_);
+    lv_obj_set_size(prev_button, 32, 32);
+    ClearBoxStyle(prev_button);
+    lv_obj_set_style_radius(prev_button, 999, 0);
+    lv_obj_set_style_bg_color(prev_button, Color(0x000000), 0);
+    lv_obj_set_style_bg_opa(prev_button, LV_OPA_50, 0);
+    lv_obj_add_flag(prev_button, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_event_cb(prev_button, OnBackgroundGalleryPrevClicked, LV_EVENT_CLICKED, this);
+    lv_obj_align(prev_button, LV_ALIGN_LEFT_MID, 8, 0);
+
+    auto* prev_label = lv_label_create(prev_button);
+    lv_obj_set_style_text_color(prev_label, Color(0xffffff), 0);
+    lv_obj_set_style_text_font(prev_label, &BUILTIN_TEXT_FONT, 0);
+    lv_label_set_text(prev_label, "<");
+    lv_obj_center(prev_label);
+
+    auto* next_button = lv_obj_create(background_preview_box_);
+    lv_obj_set_size(next_button, 32, 32);
+    ClearBoxStyle(next_button);
+    lv_obj_set_style_radius(next_button, 999, 0);
+    lv_obj_set_style_bg_color(next_button, Color(0x000000), 0);
+    lv_obj_set_style_bg_opa(next_button, LV_OPA_50, 0);
+    lv_obj_add_flag(next_button, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_event_cb(next_button, OnBackgroundGalleryNextClicked, LV_EVENT_CLICKED, this);
+    lv_obj_align(next_button, LV_ALIGN_RIGHT_MID, -8, 0);
+
+    auto* next_label = lv_label_create(next_button);
+    lv_obj_set_style_text_color(next_label, Color(0xffffff), 0);
+    lv_obj_set_style_text_font(next_label, &BUILTIN_TEXT_FONT, 0);
+    lv_label_set_text(next_label, ">");
+    lv_obj_center(next_label);
+
+    background_title_label_ = lv_label_create(background_gallery_panel_);
+    lv_obj_set_width(background_title_label_, panel_width - 20);
+    lv_obj_set_style_text_color(background_title_label_, Color(0xe5edf7), 0);
+    lv_obj_set_style_text_font(background_title_label_, &BUILTIN_TEXT_FONT, 0);
+    lv_label_set_long_mode(background_title_label_, LV_LABEL_LONG_DOT);
+    lv_obj_align(background_title_label_, LV_ALIGN_BOTTOM_LEFT, 10, -22);
+
+    background_counter_label_ = lv_label_create(background_gallery_panel_);
+    lv_obj_set_style_text_color(background_counter_label_, Color(0x64748b), 0);
+    lv_obj_set_style_text_font(background_counter_label_, &BUILTIN_TEXT_FONT, 0);
+    lv_obj_align(background_counter_label_, LV_ALIGN_BOTTOM_LEFT, 10, -7);
+
+    RefreshBackgroundGallery();
+}
+
 void Ds02HomeDisplay::CreateDockObjects() {
     const int safe_width = width_ > 0 ? width_ : 320;
     const int dock_width = Clamp(safe_width - 28, 220, 292);
@@ -663,6 +1016,7 @@ void Ds02HomeDisplay::ApplyStandbyState() {
 
     if (!launcher_visible) {
         SetProfileAvatarSpeaking(false);
+        CloseBackgroundGallery();
     }
 
     if (launcher_visible) {
@@ -724,18 +1078,47 @@ void Ds02HomeDisplay::RefreshBattery() {
     bool discharging = false;
     if (!Board::GetInstance().GetBatteryLevel(level, charging, discharging)) {
         SetCachedText(battery_label_ds02_, cached_battery_, "");
+        UpdateBatteryIcon(0, false, false);
         UpdateLowBatteryNotification(100, false, false);
         return;
     }
 
     level = std::max(0, std::min(level, 100));
     char text[32];
-    std::snprintf(text, sizeof(text), charging ? "%d%%+" : "%d%%", level);
+    std::snprintf(text, sizeof(text), charging ? "%d+" : "%d", level);
     SetCachedText(battery_label_ds02_, cached_battery_, text);
     if (battery_label_ds02_ != nullptr) {
         lv_obj_set_style_text_color(battery_label_ds02_, BatteryStatusColor(level, charging), 0);
     }
+    UpdateBatteryIcon(level, charging, true);
     UpdateLowBatteryNotification(level, charging, discharging);
+}
+
+void Ds02HomeDisplay::UpdateBatteryIcon(int level, bool charging, bool available) {
+    if (battery_icon_root_ == nullptr) {
+        return;
+    }
+
+    SetVisible(battery_icon_root_, available);
+    if (!available) {
+        return;
+    }
+
+    level = Clamp(level, 0, 100);
+    const lv_color_t tone = BatteryStatusColor(level, charging);
+    if (battery_icon_body_ != nullptr) {
+        lv_obj_set_style_border_color(battery_icon_body_, tone, 0);
+    }
+    if (battery_icon_nub_ != nullptr) {
+        lv_obj_set_style_bg_color(battery_icon_nub_, tone, 0);
+    }
+    if (battery_icon_fill_ != nullptr) {
+        lv_obj_set_style_bg_color(battery_icon_fill_, tone, 0);
+        SetVisible(battery_icon_fill_, level > 0);
+        if (level > 0) {
+            lv_obj_set_width(battery_icon_fill_, Clamp(level * 10 / 100, 1, 10));
+        }
+    }
 }
 
 void Ds02HomeDisplay::RefreshBluetooth() {
@@ -846,13 +1229,43 @@ void Ds02HomeDisplay::RefreshCalendar(bool force) {
     }
 }
 
+void Ds02HomeDisplay::RefreshSettingsPage() {
+    if (background_index_ >= kBackgroundItems.size()) {
+        background_index_ = 0;
+    }
+    SetCachedText(settings_background_value_label_, cached_settings_background_,
+                  kBackgroundItems[background_index_].title);
+}
+
+void Ds02HomeDisplay::RefreshBackgroundGallery() {
+    if (background_index_ >= kBackgroundItems.size()) {
+        background_index_ = 0;
+    }
+
+    auto* image = GetBackgroundImage(background_index_);
+    ApplyCoverImage(background_preview_box_, background_preview_image_obj_,
+                    image != nullptr ? image->image_dsc() : nullptr, 276, 136);
+
+    const auto& background = kBackgroundItems[background_index_];
+    SetCachedText(background_title_label_, cached_background_title_, background.title);
+
+    char counter[16];
+    std::snprintf(counter, sizeof(counter), "%u/%u",
+                  static_cast<unsigned>(background_index_ + 1),
+                  static_cast<unsigned>(kBackgroundItems.size()));
+    SetCachedText(background_counter_label_, cached_background_counter_, counter);
+    RefreshSettingsPage();
+}
+
 void Ds02HomeDisplay::RefreshLauncherPage(bool force) {
     const bool calendar_active = active_dock_index_ == 0;
     const bool profile_active = active_dock_index_ == kProfileDockIndex;
+    const bool settings_active = active_dock_index_ == kSettingsDockIndex;
     SetVisible(calendar_root_, calendar_active);
     SetVisible(profile_avatar_root_, profile_active);
-    SetVisible(launcher_title_label_, !calendar_active && !profile_active);
-    SetVisible(launcher_body_label_, !calendar_active && !profile_active);
+    SetVisible(settings_root_, settings_active);
+    SetVisible(launcher_title_label_, !calendar_active && !profile_active && !settings_active);
+    SetVisible(launcher_body_label_, !calendar_active && !profile_active && !settings_active);
 
     if (calendar_active) {
         RefreshCalendar(force);
@@ -861,6 +1274,11 @@ void Ds02HomeDisplay::RefreshLauncherPage(bool force) {
 
     if (profile_active) {
         ApplyProfileAvatarPulse(profile_avatar_pulse_);
+        return;
+    }
+
+    if (settings_active) {
+        RefreshSettingsPage();
         return;
     }
 
@@ -875,6 +1293,9 @@ void Ds02HomeDisplay::RefreshLauncherPage(bool force) {
 void Ds02HomeDisplay::SelectDockItem(size_t index) {
     if (index >= dock_buttons_.size() || active_dock_index_ == index) {
         return;
+    }
+    if (index != kSettingsDockIndex) {
+        CloseBackgroundGallery();
     }
     active_dock_index_ = index;
     ApplyDockSelection();
@@ -899,6 +1320,105 @@ void Ds02HomeDisplay::ApplyDockSelection() {
         lv_obj_set_style_shadow_opa(button, active ? LV_OPA_20 : LV_OPA_TRANSP, 0);
         lv_obj_set_style_text_color(label, active ? Color(0x67e8f9) : Color(0xb8c3cf), 0);
     }
+}
+
+void Ds02HomeDisplay::OpenBackgroundGallery() {
+    if (background_gallery_overlay_ == nullptr) {
+        return;
+    }
+    RefreshBackgroundGallery();
+    lv_obj_move_foreground(background_gallery_overlay_);
+    SetVisible(background_gallery_overlay_, true);
+}
+
+void Ds02HomeDisplay::CloseBackgroundGallery() {
+    if (background_index_ != persisted_background_index_) {
+        Settings settings("display", true);
+        settings.SetInt("ds02_background", static_cast<int32_t>(background_index_));
+        persisted_background_index_ = background_index_;
+    }
+    SetVisible(background_gallery_overlay_, false);
+}
+
+void Ds02HomeDisplay::MoveBackground(int direction) {
+    if (kBackgroundItems.empty()) {
+        return;
+    }
+
+    const int count = static_cast<int>(kBackgroundItems.size());
+    int next = static_cast<int>(background_index_);
+    for (int i = 0; i < count; ++i) {
+        next += direction;
+        while (next < 0) {
+            next += count;
+        }
+        next %= count;
+
+        if (GetBackgroundImage(static_cast<size_t>(next)) != nullptr) {
+            ApplyBackgroundIndex(static_cast<size_t>(next));
+            return;
+        }
+    }
+}
+
+void Ds02HomeDisplay::ApplyBackgroundIndex(size_t index) {
+    if (index >= kBackgroundItems.size()) {
+        return;
+    }
+
+    auto* image = GetBackgroundImage(index);
+    if (image == nullptr || image->image_dsc() == nullptr) {
+        ESP_LOGW(TAG, "Background asset %s is unavailable", kBackgroundItems[index].file);
+        return;
+    }
+
+    background_index_ = index;
+    wallpaper_image_.reset();
+    wallpaper_override_active_ = true;
+
+    if (wallpaper_ != nullptr) {
+        ApplyCoverImage(wallpaper_, wallpaper_image_obj_, image->image_dsc(),
+                        width_ > 0 ? width_ : 320, height_ > 0 ? height_ : 240);
+    }
+    if (kBackgroundItems.size() > 1) {
+        const size_t next = (background_index_ + 1) % kBackgroundItems.size();
+        const size_t prev = (background_index_ + kBackgroundItems.size() - 1) % kBackgroundItems.size();
+        (void)GetBackgroundImage(next);
+        (void)GetBackgroundImage(prev);
+    }
+    RefreshBackgroundGallery();
+}
+
+LvglImage* Ds02HomeDisplay::GetBackgroundImage(size_t index) {
+    if (index >= kBackgroundItems.size() || index >= background_image_cache_.size()) {
+        return nullptr;
+    }
+
+    if (background_image_cache_[index] != nullptr) {
+        return background_image_cache_[index].get();
+    }
+    if (background_load_failed_[index]) {
+        return nullptr;
+    }
+
+    void* ptr = nullptr;
+    size_t size = 0;
+    const auto& background = kBackgroundItems[index];
+    if (!GetBackgroundAssetData(background.file, ptr, size)) {
+        background_load_failed_[index] = true;
+        ESP_LOGW(TAG, "Background asset %s is not found", background.file);
+        return nullptr;
+    }
+
+    auto image = CreateBackgroundImage(ptr, size);
+    if (image == nullptr || image->image_dsc() == nullptr) {
+        background_load_failed_[index] = true;
+        ESP_LOGW(TAG, "Background asset %s could not be decoded", background.file);
+        return nullptr;
+    }
+
+    background_image_cache_[index] = std::move(image);
+    return background_image_cache_[index].get();
 }
 
 void Ds02HomeDisplay::SetProfileAvatarSpeaking(bool speaking) {
@@ -957,16 +1477,19 @@ void Ds02HomeDisplay::SetLunarDateProvider(Ds02LunarDateProvider provider) {
 void Ds02HomeDisplay::SetWallpaper(std::unique_ptr<LvglImage> image) {
     DisplayLockGuard lock(this);
     wallpaper_image_ = std::move(image);
+    wallpaper_override_active_ = wallpaper_image_ != nullptr;
     if (wallpaper_ == nullptr) {
         return;
     }
 
     if (wallpaper_image_ == nullptr) {
-        lv_obj_set_style_bg_image_src(wallpaper_, nullptr, 0);
+        ApplyCoverImage(wallpaper_, wallpaper_image_obj_, nullptr,
+                        width_ > 0 ? width_ : 320, height_ > 0 ? height_ : 240);
         return;
     }
 
-    lv_obj_set_style_bg_image_src(wallpaper_, wallpaper_image_->image_dsc(), 0);
+    ApplyCoverImage(wallpaper_, wallpaper_image_obj_, wallpaper_image_->image_dsc(),
+                    width_ > 0 ? width_ : 320, height_ > 0 ? height_ : 240);
 }
 
 void Ds02HomeDisplay::SetTheme(Theme* theme) {
@@ -976,12 +1499,14 @@ void Ds02HomeDisplay::SetTheme(Theme* theme) {
 
     DisplayLockGuard lock(this);
     auto* lvgl_theme = dynamic_cast<LvglTheme*>(theme);
-    if (lvgl_theme != nullptr && wallpaper_ != nullptr && wallpaper_image_ == nullptr) {
+    if (lvgl_theme != nullptr && wallpaper_ != nullptr && !wallpaper_override_active_) {
         auto background = lvgl_theme->background_image();
         if (background != nullptr) {
-            lv_obj_set_style_bg_image_src(wallpaper_, background->image_dsc(), 0);
+            ApplyCoverImage(wallpaper_, wallpaper_image_obj_, background->image_dsc(),
+                            width_ > 0 ? width_ : 320, height_ > 0 ? height_ : 240);
         } else {
-            lv_obj_set_style_bg_image_src(wallpaper_, nullptr, 0);
+            ApplyCoverImage(wallpaper_, wallpaper_image_obj_, nullptr,
+                            width_ > 0 ? width_ : 320, height_ > 0 ? height_ : 240);
         }
     }
     Display::SetTheme(theme);
@@ -1039,6 +1564,57 @@ void Ds02HomeDisplay::OnDockButtonClicked(lv_event_t* event) {
             display->SelectDockItem(i);
             return;
         }
+    }
+}
+
+void Ds02HomeDisplay::OnSettingsBackgroundClicked(lv_event_t* event) {
+    auto* display = static_cast<Ds02HomeDisplay*>(lv_event_get_user_data(event));
+    if (display == nullptr) {
+        return;
+    }
+    display->OpenBackgroundGallery();
+}
+
+void Ds02HomeDisplay::OnBackgroundGalleryPrevClicked(lv_event_t* event) {
+    auto* display = static_cast<Ds02HomeDisplay*>(lv_event_get_user_data(event));
+    if (display == nullptr) {
+        return;
+    }
+    display->MoveBackground(-1);
+}
+
+void Ds02HomeDisplay::OnBackgroundGalleryNextClicked(lv_event_t* event) {
+    auto* display = static_cast<Ds02HomeDisplay*>(lv_event_get_user_data(event));
+    if (display == nullptr) {
+        return;
+    }
+    display->MoveBackground(1);
+}
+
+void Ds02HomeDisplay::OnBackgroundGalleryCloseClicked(lv_event_t* event) {
+    auto* display = static_cast<Ds02HomeDisplay*>(lv_event_get_user_data(event));
+    if (display == nullptr) {
+        return;
+    }
+    display->CloseBackgroundGallery();
+}
+
+void Ds02HomeDisplay::OnBackgroundGalleryGesture(lv_event_t* event) {
+    auto* display = static_cast<Ds02HomeDisplay*>(lv_event_get_user_data(event));
+    if (display == nullptr) {
+        return;
+    }
+
+    auto* indev = lv_indev_active();
+    if (indev == nullptr) {
+        return;
+    }
+
+    const auto direction = lv_indev_get_gesture_dir(indev);
+    if (direction == LV_DIR_LEFT) {
+        display->MoveBackground(1);
+    } else if (direction == LV_DIR_RIGHT) {
+        display->MoveBackground(-1);
     }
 }
 

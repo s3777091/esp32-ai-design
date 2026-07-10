@@ -55,6 +55,7 @@ private:
     static constexpr size_t kDockItemCount = 6;
     static constexpr size_t kWeekdayCount = 7;
     static constexpr size_t kCalendarDayCount = 42;
+    static constexpr size_t kBackgroundCount = 20;
 
     void CreateStandbyObjects();
     void CreateLauncherObjects();
@@ -62,24 +63,39 @@ private:
     void CreateLowBatteryNotificationObjects();
     void CreateCalendarObjects();
     void CreateProfileObjects();
+    void CreateSettingsObjects();
+    void CreateBackgroundGalleryObjects();
     void CreateDockObjects();
     void RefreshHomeData();
     void RefreshClock();
     void RefreshNetwork();
     void RefreshBattery();
     void RefreshBluetooth();
+    void UpdateBatteryIcon(int level, bool charging, bool available);
     void UpdateLowBatteryNotification(int level, bool charging, bool discharging);
     void RefreshCalendar(bool force = false);
+    void RefreshSettingsPage();
+    void RefreshBackgroundGallery();
     void RefreshLauncherPage(bool force = false);
     void ApplyStandbyState();
     void SelectDockItem(size_t index);
     void ApplyDockSelection();
+    void OpenBackgroundGallery();
+    void CloseBackgroundGallery();
+    void MoveBackground(int direction);
+    void ApplyBackgroundIndex(size_t index);
+    LvglImage* GetBackgroundImage(size_t index);
     void SetProfileAvatarSpeaking(bool speaking);
     void ApplyProfileAvatarPulse(int value);
 
     static void OnRefreshTimer(void* arg);
     static void OnProfileAvatarTimer(void* arg);
     static void OnDockButtonClicked(lv_event_t* event);
+    static void OnSettingsBackgroundClicked(lv_event_t* event);
+    static void OnBackgroundGalleryPrevClicked(lv_event_t* event);
+    static void OnBackgroundGalleryNextClicked(lv_event_t* event);
+    static void OnBackgroundGalleryCloseClicked(lv_event_t* event);
+    static void OnBackgroundGalleryGesture(lv_event_t* event);
     static bool GetLocalTime(struct tm& local_time);
     static bool IsLeapYear(int year);
     static int DaysInMonth(int year, int month);
@@ -95,12 +111,17 @@ private:
     lv_obj_t* system_bar_ = nullptr;
     lv_obj_t* standby_layer_ = nullptr;
     lv_obj_t* wallpaper_ = nullptr;
+    lv_obj_t* wallpaper_image_obj_ = nullptr;
     lv_obj_t* dim_overlay_ = nullptr;
     lv_obj_t* corner_info_ = nullptr;
     lv_obj_t* status_row_ = nullptr;
     lv_obj_t* wifi_label_ = nullptr;
     lv_obj_t* bluetooth_label_ = nullptr;
     lv_obj_t* battery_label_ds02_ = nullptr;
+    lv_obj_t* battery_icon_root_ = nullptr;
+    lv_obj_t* battery_icon_body_ = nullptr;
+    lv_obj_t* battery_icon_fill_ = nullptr;
+    lv_obj_t* battery_icon_nub_ = nullptr;
     lv_obj_t* low_battery_pill_ = nullptr;
     lv_obj_t* low_battery_pill_label_ = nullptr;
     lv_obj_t* time_label_ = nullptr;
@@ -116,6 +137,14 @@ private:
     lv_obj_t* profile_avatar_root_ = nullptr;
     lv_obj_t* profile_avatar_shadow_ = nullptr;
     lv_obj_t* profile_avatar_sphere_ = nullptr;
+    lv_obj_t* settings_root_ = nullptr;
+    lv_obj_t* settings_background_value_label_ = nullptr;
+    lv_obj_t* background_gallery_overlay_ = nullptr;
+    lv_obj_t* background_gallery_panel_ = nullptr;
+    lv_obj_t* background_preview_box_ = nullptr;
+    lv_obj_t* background_preview_image_obj_ = nullptr;
+    lv_obj_t* background_title_label_ = nullptr;
+    lv_obj_t* background_counter_label_ = nullptr;
     lv_obj_t* dock_ = nullptr;
     std::array<lv_obj_t*, kWeekdayCount> calendar_weekday_labels_ = {};
     std::array<lv_obj_t*, kCalendarDayCount> calendar_day_cells_ = {};
@@ -124,10 +153,14 @@ private:
     std::array<lv_obj_t*, kDockItemCount> dock_icon_labels_ = {};
 
     std::unique_ptr<LvglImage> wallpaper_image_ = nullptr;
+    std::array<std::unique_ptr<LvglImage>, kBackgroundCount> background_image_cache_ = {};
+    std::array<bool, kBackgroundCount> background_load_failed_ = {};
     Ds02BluetoothStateProvider bluetooth_provider_ = nullptr;
     Ds02LunarDateProvider lunar_date_provider_ = nullptr;
 
     size_t active_dock_index_ = 0;
+    size_t background_index_ = 0;
+    size_t persisted_background_index_ = 0;
     int calendar_year_ = -1;
     int calendar_month_ = -1;
     int calendar_today_ = -1;
@@ -137,6 +170,7 @@ private:
     bool profile_avatar_speaking_ = false;
     bool profile_avatar_timer_running_ = false;
     bool low_battery_pill_visible_ = false;
+    bool wallpaper_override_active_ = false;
     std::string cached_time_;
     std::string cached_date_;
     std::string cached_wifi_;
@@ -146,6 +180,9 @@ private:
     std::string cached_launcher_title_;
     std::string cached_launcher_body_;
     std::string cached_calendar_title_;
+    std::string cached_settings_background_;
+    std::string cached_background_title_;
+    std::string cached_background_counter_;
     std::array<std::string, kCalendarDayCount> cached_calendar_day_text_ = {};
 };
 

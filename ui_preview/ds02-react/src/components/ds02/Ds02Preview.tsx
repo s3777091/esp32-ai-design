@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Check, ChevronLeft, ChevronRight, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
@@ -84,6 +85,101 @@ const CIRCUIT_BUTTONS = [
   },
 ];
 
+const BACKGROUNDS = [
+  { key: "mountain", label: "Mountain", url: "/mountain.png" },
+  { key: "abtract", label: "Abstract", url: "/abtract.png" },
+  { key: "anime-light", label: "Anime Light", url: "/anime_light.png" },
+  { key: "cat-dog-anime", label: "Cat Dog Anime", url: "/cat_dog_anime.png" },
+  { key: "cat-dog-chill", label: "Cat Dog Chill", url: "/cat_dog_chill.png" },
+  { key: "cat-dog-sleep", label: "Cat Dog Sleep", url: "/cat_dog_sleep.png" },
+  { key: "europe", label: "Europe", url: "/europe.png" },
+  { key: "fantacy-anime", label: "Fantacy Anime", url: "/fantacy_anime.png" },
+  { key: "follower", label: "Follower", url: "/follower.png" },
+  { key: "haivan", label: "Hai Van", url: "/haivan.png" },
+  { key: "jp-temple", label: "JP Temple", url: "/jp_temple.png" },
+  { key: "linh-ung-pagoda", label: "Linh Ung Pagoda", url: "/linh_ung_pagoda.png" },
+  { key: "morning-beach", label: "Morning Beach", url: "/morning_beach.png" },
+  { key: "night-light", label: "Night Light", url: "/night_light.png" },
+  { key: "pixel", label: "Pixel", url: "/pixel.png" },
+  { key: "romance-anime", label: "Romance Anime", url: "/romance_anime.png" },
+  { key: "rong-river", label: "Rong River", url: "/rong_river.png" },
+  { key: "rooftop", label: "Rooftop", url: "/rooftop.png" },
+  { key: "rubic", label: "Rubic", url: "/rubic.png" },
+  { key: "sa-mac", label: "Sa Mac", url: "/sa_mac.png" },
+] as const;
+
+type BackgroundOption = (typeof BACKGROUNDS)[number];
+
+const TEXT_FONTS = [
+  {
+    key: "be-vietnam",
+    label: "Be Vietnam",
+    family: '"Be Vietnam Pro", "Segoe UI", "Noto Sans", Arial, sans-serif',
+  },
+  {
+    key: "noto-sans",
+    label: "Noto Sans",
+    family: '"Noto Sans", "Segoe UI", Arial, sans-serif',
+  },
+  {
+    key: "segoe",
+    label: "Segoe UI",
+    family: '"Segoe UI", "Noto Sans", Arial, sans-serif',
+  },
+  {
+    key: "inter",
+    label: "Inter",
+    family: '"Inter", "Segoe UI", "Noto Sans", Arial, sans-serif',
+  },
+  {
+    key: "mono-vn",
+    label: "Mono VN",
+    family: '"Cascadia Mono", "JetBrains Mono", "Noto Sans Mono", Consolas, monospace',
+  },
+] as const;
+
+const TEXT_PAINTS = [
+  {
+    key: "protexa",
+    label: "ProteXa",
+    kind: "gradient",
+    value: "linear-gradient(90deg, #63f5bf 0%, #68def8 50%, #9aa9ff 100%)",
+  },
+  {
+    key: "aurora",
+    label: "Aurora",
+    kind: "gradient",
+    value: "linear-gradient(90deg, #5eead4 0%, #38bdf8 44%, #c084fc 100%)",
+  },
+  {
+    key: "sunrise",
+    label: "Sunrise",
+    kind: "gradient",
+    value: "linear-gradient(90deg, #fde68a 0%, #fb7185 50%, #c084fc 100%)",
+  },
+  {
+    key: "white",
+    label: "White",
+    kind: "solid",
+    value: "#ffffff",
+  },
+  {
+    key: "cyan",
+    label: "Cyan",
+    kind: "solid",
+    value: "#67e8f9",
+  },
+  {
+    key: "mint",
+    label: "Mint",
+    kind: "solid",
+    value: "#6ee7b7",
+  },
+] as const;
+
+type TextFontOption = (typeof TEXT_FONTS)[number];
+type TextPaintOption = (typeof TEXT_PAINTS)[number];
+
 function formatDate(date: Date) {
   const weekday = new Intl.DateTimeFormat("vi-VN", { weekday: "long" }).format(date);
   const day = date.getDate();
@@ -112,6 +208,26 @@ function formatLunarDate(date: Date) {
 
 function noop() {}
 
+function clampBrightness(value: number) {
+  return Math.max(15, Math.min(100, value));
+}
+
+function getTextPaintStyle(paint: TextPaintOption): React.CSSProperties {
+  if (paint.kind === "gradient") {
+    return {
+      background: paint.value,
+      backgroundClip: "text",
+      WebkitBackgroundClip: "text",
+      color: "transparent",
+      WebkitTextFillColor: "transparent",
+    };
+  }
+
+  return {
+    color: paint.value,
+  };
+}
+
 export function Ds02Preview() {
   const [stateIndex, setStateIndex] = useState(0);
   const [time, setTime] = useState("--:--");
@@ -124,7 +240,11 @@ export function Ds02Preview() {
   const [previewVolume, setPreviewVolume] = useState(70);
   const [previewBrightness, setPreviewBrightness] = useState(75);
   const [previewTheme, setPreviewTheme] = useState<Ds02Theme>("light");
-  const [deviceAecEnabled, setDeviceAecEnabled] = useState(true);
+  const [backgroundIndex, setBackgroundIndex] = useState(0);
+  const [backgroundGalleryOpen, setBackgroundGalleryOpen] = useState(false);
+  const [textFontIndex, setTextFontIndex] = useState(0);
+  const [textPaintIndex, setTextPaintIndex] = useState(0);
+  const [textStyleOpen, setTextStyleOpen] = useState(false);
 
   // Clock.
   useEffect(() => {
@@ -223,6 +343,8 @@ export function Ds02Preview() {
 
   const state = STATES[stateIndex];
   const showDock = state.key === "black";
+  const textFont = TEXT_FONTS[textFontIndex] ?? TEXT_FONTS[0];
+  const textPaint = TEXT_PAINTS[textPaintIndex] ?? TEXT_PAINTS[0];
   const [activeTab, setActiveTab] = useState(1); // 1 = Home
   const pressBoot = () => setStateIndex((i) => (i + 1) % STATES.length);
   const togglePreviewWifi = () => setOffline((value) => !value);
@@ -231,6 +353,26 @@ export function Ds02Preview() {
   };
   const togglePreviewTheme = () => {
     setPreviewTheme((value) => (value === "light" ? "dark" : "light"));
+  };
+  const updatePreviewBrightness = (value: number) => {
+    setPreviewBrightness(clampBrightness(value));
+  };
+  const openBackgroundGallery = () => {
+    setBackgroundGalleryOpen(true);
+  };
+  const closeBackgroundGallery = () => {
+    setBackgroundGalleryOpen(false);
+  };
+  const openTextStyle = () => {
+    setTextStyleOpen(true);
+  };
+  const closeTextStyle = () => {
+    setTextStyleOpen(false);
+  };
+  const moveBackground = (direction: -1 | 1) => {
+    setBackgroundIndex(
+      (value) => (value + direction + BACKGROUNDS.length) % BACKGROUNDS.length
+    );
   };
   const forceLowBattery = () => {
     setBatteryLevel(0.1);
@@ -242,7 +384,7 @@ export function Ds02Preview() {
   return (
     <main className="min-h-screen w-full grid place-items-center bg-[var(--ds-page-bg)] text-[var(--ds-text)] font-sans p-4 gap-5">
       <header className="text-center max-w-[640px]">
-        <h1 className="text-xl font-bold m-0">DS-02 Standby UI Preview</h1>
+        <h1 className="text-xl font-bold m-0">Ekko Robot UI Preview</h1>
         <p className="text-[13px] text-[var(--ds-muted)] leading-snug mt-1">
           Device screen content: wallpaper, Wi-Fi/battery, time, and weather label.
         </p>
@@ -255,24 +397,39 @@ export function Ds02Preview() {
         <div className="w-full max-w-[360px] p-2.5 rounded-xl bg-[#07080a] border border-[#30343d]">
           <div
             data-state={state.key}
+            data-theme={previewTheme}
+            data-wallpaper={BACKGROUNDS[backgroundIndex].key}
+            data-text-paint={textPaint.kind}
             aria-label="DS-02 screen"
             className="relative w-full aspect-[4/3] bg-black rounded-sm overflow-hidden text-white ds02-screen"
+            style={{
+              "--ds02-brightness-dim": String(
+                (100 - clampBrightness(previewBrightness)) / 100
+              ),
+              "--ds02-wallpaper-image": `url("${BACKGROUNDS[backgroundIndex].url}")`,
+              "--ds02-app-font": textFont.family,
+              "--ds02-text-color": textPaint.kind === "solid" ? textPaint.value : "#ffffff",
+              "--ds02-text-gradient":
+                textPaint.kind === "gradient"
+                  ? textPaint.value
+                  : `linear-gradient(90deg, ${textPaint.value}, ${textPaint.value})`,
+            } as React.CSSProperties}
           >
             {/* Standby wallpaper + status */}
             <div aria-hidden="true" className="ds02-standby absolute inset-0">
               <div className="ds02-overlay" />
               <div className="ds02-standby-clock absolute inset-x-0 bottom-0 grid justify-items-end items-start pr-4 pb-4">
                 <div className="relative z-[1] grid gap-2 justify-items-end text-right">
-                  <div className="relative text-[56px] font-light leading-none drop-shadow-[0_2px_16px_rgba(0,0,0,0.78)]">
+                  <div className="ds02-styled-text relative text-[56px] font-light leading-none drop-shadow-[0_2px_16px_rgba(0,0,0,0.78)]">
                     {time}
                   </div>
                 </div>
               </div>
               <div className="absolute left-4 bottom-4 z-[1] grid gap-1">
-                <div className="text-white/90 text-[12px] font-extrabold leading-[1.05] drop-shadow-[0_1px_10px_rgba(0,0,0,0.86)]">
+                <div className="ds02-styled-text text-[12px] font-extrabold leading-[1.05] drop-shadow-[0_1px_10px_rgba(0,0,0,0.86)]">
                   ĐIỀU KIỆN THỜI TIẾT
                 </div>
-                <div className="text-white/80 text-[10px] font-bold leading-[1.1] whitespace-nowrap drop-shadow-[0_1px_10px_rgba(0,0,0,0.86)]">
+                <div className="ds02-styled-text text-[10px] font-bold leading-[1.1] whitespace-nowrap drop-shadow-[0_1px_10px_rgba(0,0,0,0.86)]">
                   {dateText}
                 </div>
               </div>
@@ -281,7 +438,7 @@ export function Ds02Preview() {
             {/* Black launcher = TiltedDock + tab content */}
             <div
               aria-hidden={!showDock}
-              className="ds02-launcher absolute inset-0 bg-black transition-opacity duration-200"
+              className="ds02-launcher absolute inset-0 transition-[background-color,color,opacity] duration-200"
               style={{
                 opacity: showDock ? 1 : 0,
                 pointerEvents: showDock ? "auto" : "none",
@@ -299,15 +456,38 @@ export function Ds02Preview() {
                     volume: previewVolume,
                     onVolumeChange: setPreviewVolume,
                     brightness: previewBrightness,
-                    onBrightnessChange: setPreviewBrightness,
+                    onBrightnessChange: updatePreviewBrightness,
                     theme: previewTheme,
                     onToggleTheme: togglePreviewTheme,
-                    aecEnabled: deviceAecEnabled,
-                    onToggleAec: () => setDeviceAecEnabled((value) => !value),
+                    backgroundName: BACKGROUNDS[backgroundIndex].label,
+                    onChangeBackground: openBackgroundGallery,
+                    textStyleName: `${textFont.label} / ${textPaint.label}`,
+                    onChangeTextStyle: openTextStyle,
                   }}
                 />
               )}
             </div>
+
+            {backgroundGalleryOpen && (
+              <BackgroundGalleryModal
+                backgrounds={BACKGROUNDS}
+                currentIndex={backgroundIndex}
+                onMove={moveBackground}
+                onClose={closeBackgroundGallery}
+              />
+            )}
+
+            {textStyleOpen && (
+              <TextStyleModal
+                fonts={TEXT_FONTS}
+                paints={TEXT_PAINTS}
+                fontIndex={textFontIndex}
+                paintIndex={textPaintIndex}
+                onSelectFont={setTextFontIndex}
+                onSelectPaint={setTextPaintIndex}
+                onClose={closeTextStyle}
+              />
+            )}
 
             <SystemStatusBar
               offline={offline}
@@ -380,6 +560,235 @@ export function Ds02Preview() {
   );
 }
 
+function BackgroundGalleryModal({
+  backgrounds,
+  currentIndex,
+  onMove,
+  onClose,
+}: {
+  backgrounds: readonly BackgroundOption[];
+  currentIndex: number;
+  onMove: (direction: -1 | 1) => void;
+  onClose: () => void;
+}) {
+  const [touchStartX, setTouchStartX] = useState<number | null>(null);
+  const current = backgrounds[currentIndex] ?? backgrounds[0];
+
+  const handleTouchEnd = (event: React.TouchEvent<HTMLDivElement>) => {
+    const touch = event.changedTouches.item(0);
+    if (!touch || touchStartX === null) return;
+
+    const deltaX = touch.clientX - touchStartX;
+    if (Math.abs(deltaX) > 32) {
+      onMove(deltaX < 0 ? 1 : -1);
+    }
+    setTouchStartX(null);
+  };
+
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-label="Background gallery"
+      className="absolute inset-0 z-[70] grid place-items-center bg-black/70 px-3 backdrop-blur-[2px]"
+      onClick={onClose}
+    >
+      <div
+        className="w-full max-w-[296px] overflow-hidden rounded-lg border border-white/[0.15] bg-[#070a10] text-white shadow-[0_18px_44px_rgba(0,0,0,0.62)]"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <div className="flex h-8 items-center justify-between px-2">
+          <div className="min-w-0 text-[11px] font-bold leading-none">
+            Background
+          </div>
+          <button
+            type="button"
+            aria-label="Close background gallery"
+            onClick={onClose}
+            className="grid h-6 w-6 place-items-center rounded-md text-white/75 hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300"
+          >
+            <X size={15} aria-hidden />
+          </button>
+        </div>
+
+        <div
+          className="relative mx-2 h-[142px] overflow-hidden rounded-md border border-white/[0.12] bg-black"
+          onTouchStart={(event) =>
+            setTouchStartX(event.touches.item(0)?.clientX ?? null)
+          }
+          onTouchEnd={handleTouchEnd}
+        >
+          <img
+            src={current.url}
+            alt={current.label}
+            draggable={false}
+            className="h-full w-full select-none object-cover"
+          />
+          <button
+            type="button"
+            aria-label="Previous background"
+            onClick={() => onMove(-1)}
+            className="absolute left-1 top-1/2 grid h-7 w-7 -translate-y-1/2 place-items-center rounded-full bg-black/[0.46] text-white shadow-[0_6px_16px_rgba(0,0,0,0.42)] hover:bg-black/[0.68] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300"
+          >
+            <ChevronLeft size={17} aria-hidden />
+          </button>
+          <button
+            type="button"
+            aria-label="Next background"
+            onClick={() => onMove(1)}
+            className="absolute right-1 top-1/2 grid h-7 w-7 -translate-y-1/2 place-items-center rounded-full bg-black/[0.46] text-white shadow-[0_6px_16px_rgba(0,0,0,0.42)] hover:bg-black/[0.68] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300"
+          >
+            <ChevronRight size={17} aria-hidden />
+          </button>
+        </div>
+
+        <div className="flex h-9 items-center justify-between gap-2 px-2">
+          <div className="min-w-0 text-[10px] font-semibold leading-none text-white/[0.78]">
+            <span className="block truncate">{current.label}</span>
+            <span className="mt-0.5 block text-[9px] text-white/[0.42]">
+              {currentIndex + 1}/{backgrounds.length}
+            </span>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function TextStyleModal({
+  fonts,
+  paints,
+  fontIndex,
+  paintIndex,
+  onSelectFont,
+  onSelectPaint,
+  onClose,
+}: {
+  fonts: readonly TextFontOption[];
+  paints: readonly TextPaintOption[];
+  fontIndex: number;
+  paintIndex: number;
+  onSelectFont: (index: number) => void;
+  onSelectPaint: (index: number) => void;
+  onClose: () => void;
+}) {
+  const [tab, setTab] = useState<"color" | "font">("color");
+  const font = fonts[fontIndex] ?? fonts[0];
+  const paint = paints[paintIndex] ?? paints[0];
+
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-label="Text style"
+      className="absolute inset-0 z-[70] grid place-items-center bg-black/70 px-3 backdrop-blur-[2px]"
+      onClick={onClose}
+    >
+      <div
+        className="w-full max-w-[296px] overflow-hidden rounded-lg border border-white/[0.15] bg-[#070a10] text-white shadow-[0_18px_44px_rgba(0,0,0,0.62)]"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <div className="flex h-8 items-center justify-between px-2">
+          <div className="min-w-0 text-[11px] font-bold leading-none">
+            Text style
+          </div>
+          <button
+            type="button"
+            aria-label="Close text style"
+            onClick={onClose}
+            className="grid h-6 w-6 place-items-center rounded-md text-white/75 hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300"
+          >
+            <X size={15} aria-hidden />
+          </button>
+        </div>
+
+        <div className="mx-2 overflow-hidden rounded-md border border-white/[0.12] bg-black px-2 py-2">
+          <div className="text-[20px] font-bold leading-tight">
+            <span
+              className="inline-block max-w-full truncate align-top"
+              style={{
+                fontFamily: font.family,
+                ...getTextPaintStyle(paint),
+              }}
+            >
+              Chào Ekko
+            </span>
+          </div>
+        </div>
+
+        <div className="mx-2 mt-2 grid grid-cols-2 gap-1 rounded-md bg-white/[0.06] p-0.5">
+          <button
+            type="button"
+            onClick={() => setTab("color")}
+            className={`h-6 rounded-[5px] text-[10px] font-bold leading-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300 ${
+              tab === "color" ? "bg-cyan-300 text-slate-950" : "text-white/[0.68]"
+            }`}
+          >
+            Color
+          </button>
+          <button
+            type="button"
+            onClick={() => setTab("font")}
+            className={`h-6 rounded-[5px] text-[10px] font-bold leading-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300 ${
+              tab === "font" ? "bg-cyan-300 text-slate-950" : "text-white/[0.68]"
+            }`}
+          >
+            Font
+          </button>
+        </div>
+
+        <div className="ds02-style-list mt-1 max-h-[92px] overflow-y-auto px-2 pb-2">
+          {tab === "color"
+            ? paints.map((option, index) => (
+                <button
+                  key={option.key}
+                  type="button"
+                  onClick={() => onSelectPaint(index)}
+                  className="mb-1 flex h-8 w-full items-center gap-2 rounded-md border border-white/[0.08] bg-white/[0.045] px-2 text-left hover:bg-white/[0.08] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300"
+                >
+                  <span
+                    className="h-4 w-4 shrink-0 rounded-full border border-white/20"
+                    style={{ background: option.value }}
+                    aria-hidden
+                  />
+                  <span
+                    className="min-w-0 flex-1 truncate text-[11px] font-bold leading-none"
+                    style={getTextPaintStyle(option)}
+                  >
+                    {option.label}
+                  </span>
+                  {index === paintIndex && (
+                    <Check size={13} className="shrink-0 text-cyan-300" aria-hidden />
+                  )}
+                </button>
+              ))
+            : fonts.map((option, index) => (
+                <button
+                  key={option.key}
+                  type="button"
+                  onClick={() => onSelectFont(index)}
+                  className="mb-1 flex h-8 w-full items-center gap-2 rounded-md border border-white/[0.08] bg-white/[0.045] px-2 text-left hover:bg-white/[0.08] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300"
+                >
+                  <span
+                    className="min-w-0 flex-1 truncate text-[12px] font-bold leading-none"
+                    style={{
+                      fontFamily: option.family,
+                      ...getTextPaintStyle(paint),
+                    }}
+                  >
+                    {option.label}
+                  </span>
+                  {index === fontIndex && (
+                    <Check size={13} className="shrink-0 text-cyan-300" aria-hidden />
+                  )}
+                </button>
+              ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function SystemStatusBar({
   offline,
   batteryLevel,
@@ -402,10 +811,12 @@ function SystemStatusBar({
         <span className={wifiTone}>
           <MiniWifiIcon offline={offline} />
         </span>
-        <span className={btTone}>{btAvailable ? "BT" : "BTx"}</span>
+        <span className={btTone}>
+          <MiniBluetoothIcon unavailable={btAvailable !== true} />
+        </span>
         <span className={batteryTone}>{Math.round(level * 100)}</span>
         <span className={batteryTone}>
-          <MiniBatteryBar level={level} />
+          <MiniBatteryBar level={level} charging={batteryCharging} />
         </span>
       </div>
     </div>
@@ -441,38 +852,110 @@ function LowBatteryPill({
 
 function MiniWifiIcon({ offline }: { offline: boolean }) {
   return (
-    <span
+    <svg
       aria-hidden
-      className={`relative inline-block h-[9px] w-[13px] text-current ${
-        offline ? "after:content-[''] after:absolute after:left-0 after:top-[4px] after:h-px after:w-[14px] after:rounded-full after:bg-current after:rotate-[-42deg]" : ""
-      }`}
+      viewBox="0 0 18 14"
+      className="h-[10px] w-[14px] overflow-visible"
+      fill="none"
     >
-      <span className="absolute left-1/2 bottom-0 h-[9px] w-[13px] -translate-x-1/2 rounded-full border-[1.4px] border-current border-l-transparent border-r-transparent border-t-transparent" />
-      <span className="absolute left-1/2 bottom-0 h-[6px] w-[8px] -translate-x-1/2 rounded-full border-[1.4px] border-current border-l-transparent border-r-transparent border-t-transparent" />
-      <span className="absolute bottom-0 left-1/2 h-[2px] w-[2px] -translate-x-1/2 rounded-full bg-current" />
-    </span>
+      <path
+        d="M2 5.2C5.9 2.1 12.1 2.1 16 5.2"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinecap="round"
+      />
+      <path
+        d="M5 8.1C7.25 6.45 10.75 6.45 13 8.1"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinecap="round"
+      />
+      <path
+        d="M8.15 10.8C8.65 10.45 9.35 10.45 9.85 10.8"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+      />
+      {offline && (
+        <path
+          d="M3 2L15 13"
+          stroke="currentColor"
+          strokeWidth="1.6"
+          strokeLinecap="round"
+        />
+      )}
+    </svg>
   );
 }
 
-function MiniBatteryBar({ level }: { level: number }) {
+function MiniBluetoothIcon({ unavailable }: { unavailable: boolean }) {
+  return (
+    <svg
+      aria-hidden
+      viewBox="0 0 14 14"
+      className="h-[10px] w-[10px] overflow-visible"
+      fill="none"
+    >
+      <path
+        d="M6.1 1.6L10 5.05L6.1 8.5V1.6Z"
+        stroke="currentColor"
+        strokeWidth="1.35"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M3.2 3.65L10 9.75L6.1 12.4V1.6"
+        stroke="currentColor"
+        strokeWidth="1.35"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      {unavailable && (
+        <path
+          d="M2 2L12 12"
+          stroke="currentColor"
+          strokeWidth="1.45"
+          strokeLinecap="round"
+        />
+      )}
+    </svg>
+  );
+}
+
+function MiniBatteryBar({
+  level,
+  charging,
+}: {
+  level: number;
+  charging: boolean;
+}) {
   const pct = Math.max(0, Math.min(1, level));
+  const fillWidth = Math.max(1, Math.round(pct * 13));
 
   return (
-    <span
+    <svg
       aria-hidden
-      className="relative h-[9px] w-[18px] rounded-[3px] border border-current"
-      style={
-        {
-          "--battery-level": pct,
-        } as React.CSSProperties
-      }
+      viewBox="0 0 22 12"
+      className="h-[10px] w-[19px] shrink-0 overflow-visible"
+      fill="none"
     >
-      <span
-        className="absolute left-px top-px h-[5px] rounded-[2px] bg-current"
-        style={{ width: "calc((100% - 4px) * var(--battery-level, 0))" }}
+      <rect
+        x="1"
+        y="2"
+        width="17"
+        height="8"
+        rx="2"
+        stroke="currentColor"
+        strokeWidth="1.4"
       />
-      <span className="absolute -right-[3px] top-[2px] h-[5px] w-[2px] rounded-r bg-current" />
-    </span>
+      <rect x="19" y="4" width="2" height="4" rx="1" fill="currentColor" />
+      <rect x="3" y="4" width={fillWidth} height="4" rx="1" fill="currentColor" />
+      {charging && (
+        <path
+          d="M10.7 2.7L7.8 6.3H10L8.9 9.4L12.2 5.4H10L10.7 2.7Z"
+          fill="#020617"
+        />
+      )}
+    </svg>
   );
 }
 
@@ -484,7 +967,7 @@ const TAB_PAGES: Record<number, { title: string; body: string }> = {
   1: { title: "Home", body: "" }, // Home renders the real <Calendar /> below.
   2: { title: "Search", body: "Tìm kiếm thiết bị, bài hát, cài đặt…" },
   3: { title: "Alerts", body: "Không có thông báo mới." },
-  4: { title: "Profile", body: "Người dùng: ekko.huynh" },
+  4: { title: "Ekko Robot", body: "Wake word: hi ekko" },
   5: { title: "Music", body: "Chưa có bài hát nào đang phát." },
   6: { title: "Settings", body: "Wi-Fi, âm thanh, hiển thị, ngôn ngữ…" },
 };
@@ -501,8 +984,10 @@ function DockPage({
   const isHome = activeTab === 1;
   const isProfile = activeTab === 4;
   const isSettings = activeTab === 6;
+  const isLight = settings.theme === "light";
+
   return (
-    <div className="absolute inset-0 flex flex-col text-white">
+    <div className={isLight ? "absolute inset-0 flex flex-col text-slate-950" : "absolute inset-0 flex flex-col text-white"}>
       {/* Tab content fills the screen above the dock. */}
       <div className="flex-1 relative overflow-hidden">
         {isHome ? (
@@ -516,7 +1001,7 @@ function DockPage({
             <ProfileAvatar3D speaking={false} />
           </div>
         ) : isSettings ? (
-          <div className="ds02-dock-page bg-black">
+          <div className="ds02-dock-page">
             <Ds02SettingsPanel {...settings} />
           </div>
         ) : (
