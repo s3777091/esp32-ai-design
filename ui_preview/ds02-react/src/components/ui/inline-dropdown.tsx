@@ -3,6 +3,7 @@
 import { useState, type ReactNode } from "react";
 import { motion } from "framer-motion";
 import {
+  BellRing,
   Bluetooth,
   ChevronRight,
   Image,
@@ -30,6 +31,8 @@ export interface Ds02SettingsPanelProps {
   onBrightnessChange: (value: number) => void;
   theme: Ds02Theme;
   onToggleTheme: () => void;
+  wakeSoundName: string;
+  onChangeWakeSound: () => void;
   backgroundName: string;
   onChangeBackground: () => void;
   textStyleName: string;
@@ -47,6 +50,8 @@ export function Ds02SettingsPanel({
   onBrightnessChange,
   theme,
   onToggleTheme,
+  wakeSoundName,
+  onChangeWakeSound,
   backgroundName,
   onChangeBackground,
   textStyleName,
@@ -162,6 +167,15 @@ export function Ds02SettingsPanel({
         />
         <SettingRow
           theme={theme}
+          icon={<BellRing size={15} />}
+          iconClassName="bg-teal-500"
+          title="Wake sound"
+          detail={wakeSoundName}
+          onClick={onChangeWakeSound}
+          value={<ChevronRight size={14} aria-hidden />}
+        />
+        <SettingRow
+          theme={theme}
           icon={<Image size={15} />}
           iconClassName="bg-sky-500"
           title="Change background"
@@ -189,6 +203,7 @@ export const Component = () => {
   const [volume, setVolume] = useState(70);
   const [brightness, setBrightness] = useState(75);
   const [theme, setTheme] = useState<Ds02Theme>("light");
+  const [wakeSoundIndex, setWakeSoundIndex] = useState(0);
   const [backgroundIndex, setBackgroundIndex] = useState(0);
   const [textStyleIndex, setTextStyleIndex] = useState(0);
   const backgrounds = [
@@ -218,6 +233,7 @@ export const Component = () => {
     "Noto Sans / Aurora",
     "Segoe UI / Sunrise",
   ];
+  const wakeSounds = ["Popup", "Success", "Vibration", "Exclamation", "Off"];
 
   return (
     <div className="relative h-[220px] w-[320px] overflow-hidden rounded-lg bg-black">
@@ -232,6 +248,10 @@ export const Component = () => {
         onBrightnessChange={setBrightness}
         theme={theme}
         onToggleTheme={() => setTheme((value) => (value === "light" ? "dark" : "light"))}
+        wakeSoundName={wakeSounds[wakeSoundIndex]}
+        onChangeWakeSound={() =>
+          setWakeSoundIndex((value) => (value + 1) % wakeSounds.length)
+        }
         backgroundName={backgrounds[backgroundIndex]}
         onChangeBackground={() =>
           setBackgroundIndex((value) => (value + 1) % backgrounds.length)

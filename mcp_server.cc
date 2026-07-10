@@ -17,8 +17,86 @@
 #include "settings.h"
 #include "lvgl_theme.h"
 #include "lvgl_display.h"
+#include "ds02_home_display.h"
+
+#include <cctype>
+#include <cstdio>
+#include <cstdlib>
 
 #define TAG "MCP"
+
+namespace {
+
+std::string NormalizeColorName(const std::string& value) {
+    std::string normalized;
+    normalized.reserve(value.size());
+    for (unsigned char ch : value) {
+        if (!std::isspace(ch) && ch != '_' && ch != '-') {
+            normalized.push_back(static_cast<char>(std::tolower(ch)));
+        }
+    }
+    return normalized;
+}
+
+bool ParseColor(const std::string& value, uint32_t& color) {
+    std::string normalized = NormalizeColorName(value);
+    if (normalized.empty()) {
+        return false;
+    }
+
+    struct NamedColor {
+        const char* name;
+        uint32_t value;
+    };
+    static constexpr NamedColor kNamedColors[] = {
+        {"white", 0xffffff},
+        {"black", 0x000000},
+        {"red", 0xff3344},
+        {"green", 0x22c55e},
+        {"blue", 0x3b82f6},
+        {"yellow", 0xfacc15},
+        {"orange", 0xf97316},
+        {"purple", 0xa855f7},
+        {"pink", 0xec4899},
+        {"cyan", 0x22d3ee},
+        {"teal", 0x14b8a6},
+    };
+    for (const auto& named_color : kNamedColors) {
+        if (normalized == named_color.name) {
+            color = named_color.value;
+            return true;
+        }
+    }
+
+    if (normalized[0] == '#') {
+        normalized.erase(normalized.begin());
+    }
+    if (normalized.rfind("0x", 0) == 0) {
+        normalized.erase(0, 2);
+    }
+    if (normalized.size() == 3) {
+        std::string expanded;
+        expanded.reserve(6);
+        for (char ch : normalized) {
+            expanded.push_back(ch);
+            expanded.push_back(ch);
+        }
+        normalized = expanded;
+    }
+    if (normalized.size() != 6) {
+        return false;
+    }
+    for (unsigned char ch : normalized) {
+        if (!std::isxdigit(ch)) {
+            return false;
+        }
+    }
+
+    color = static_cast<uint32_t>(std::strtoul(normalized.c_str(), nullptr, 16)) & 0xffffff;
+    return true;
+}
+
+} // namespace
 
 McpServer::McpServer() {
 }
@@ -94,6 +172,58 @@ void McpServer::AddCommonTools() {
                     return true;
                 }
                 return false;
+            });
+    }
+
+    if (auto* home_display = dynamic_cast<home::Ds02HomeDisplay*>(display)) {
+        AddTool("self.screen.get_backgrounds",
+            "List available DS-02 screen backgrounds and the active background index. Use this before changing the background when the requested background is ambiguous.",
+            PropertyList(),
+            [home_display](const PropertyList& properties) -> ReturnValue {
+                cJSON* json = cJSON_CreateObject();
+                cJSON_AddNumberToObject(json, "active_index", home_display->GetBackgroundIndex() + 1);
+                cJSON* backgrounds = cJSON_CreateArray();
+                for (size_t i = 0; i < home_display->GetBackgroundCount(); ++i) {
+                    cJSON* item = cJSON_CreateObject();
+                    cJSON_AddNumberToObject(item, "index", i + 1);
+                    cJSON_AddStringToObject(item, "title", home_display->GetBackgroundTitle(i));
+                    cJSON_AddStringToObject(item, "file", home_display->GetBackgroundFile(i));
+                    cJSON_AddItemToArray(backgrounds, item);
+                }
+                cJSON_AddItemToObject(json, "backgrounds", backgrounds);
+                return json;
+            });
+
+        AddTool("self.screen.set_background",
+            "Change the DS-02 screen background. Use `index` as a 1-based number from `self.screen.get_backgrounds`, or use `background` with a title/file name such as `Rooftop` or `rooftop.png`. Use index 0 when setting by name.",
+            PropertyList({
+                Property("background", kPropertyTypeString, std::string("")),
+                Property("index", kPropertyTypeInteger, 0, 0, 100)
+            }),
+            [home_display](const PropertyList& properties) -> ReturnValue {
+                const int index = properties["index"].value<int>();
+                if (index > 0) {
+                    return home_display->SetBackgroundIndex(static_cast<size_t>(index - 1));
+                }
+
+                const auto background = properties["background"].value<std::string>();
+                return home_display->SetBackgroundByName(background);
+            });
+
+        AddTool("self.screen.set_font_text_color",
+            "Set the DS-02 font/text color. Accepts hex colors like `#FFFFFF`, `0x67E8F9`, short hex like `#fff`, or names like white, red, green, blue, yellow, orange, purple, pink, cyan, teal, black.",
+            PropertyList({
+                Property("color", kPropertyTypeString)
+            }),
+            [home_display](const PropertyList& properties) -> ReturnValue {
+                uint32_t color = 0;
+                const auto color_text = properties["color"].value<std::string>();
+                if (!ParseColor(color_text, color)) {
+                    return false;
+                }
+
+                home_display->SetTextColor(color);
+                return true;
             });
     }
 

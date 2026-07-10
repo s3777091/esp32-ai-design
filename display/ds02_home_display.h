@@ -3,6 +3,7 @@
 #include "display/lcd_display.h"
 
 #include <array>
+#include <cstdint>
 #include <ctime>
 #include <functional>
 #include <memory>
@@ -44,6 +45,14 @@ public:
     void SetBluetoothStateProvider(Ds02BluetoothStateProvider provider);
     void SetLunarDateProvider(Ds02LunarDateProvider provider);
     void SetWallpaper(std::unique_ptr<LvglImage> image);
+    bool SetBackgroundIndex(size_t index, bool persist = true);
+    bool SetBackgroundByName(const std::string& name, bool persist = true);
+    size_t GetBackgroundIndex() const { return background_index_; }
+    size_t GetBackgroundCount() const;
+    const char* GetBackgroundTitle(size_t index) const;
+    const char* GetBackgroundFile(size_t index) const;
+    void SetTextColor(uint32_t color, bool persist = true);
+    uint32_t GetTextColor() const { return text_color_; }
 
 private:
     enum class StandbyState {
@@ -80,17 +89,22 @@ private:
     void ApplyStandbyState();
     void SelectDockItem(size_t index);
     void ApplyDockSelection();
+    void ApplyNextWakeSound();
     void OpenBackgroundGallery();
     void CloseBackgroundGallery();
     void MoveBackground(int direction);
-    void ApplyBackgroundIndex(size_t index);
+    bool ApplyBackgroundIndex(size_t index);
+    void PersistBackgroundIndex();
     LvglImage* GetBackgroundImage(size_t index);
+    void ApplyTextColor();
+    void ApplyTextColorToObjectTree(lv_obj_t* obj, lv_color_t color);
     void SetProfileAvatarSpeaking(bool speaking);
     void ApplyProfileAvatarPulse(int value);
 
     static void OnRefreshTimer(void* arg);
     static void OnProfileAvatarTimer(void* arg);
     static void OnDockButtonClicked(lv_event_t* event);
+    static void OnSettingsWakeSoundClicked(lv_event_t* event);
     static void OnSettingsBackgroundClicked(lv_event_t* event);
     static void OnBackgroundGalleryPrevClicked(lv_event_t* event);
     static void OnBackgroundGalleryNextClicked(lv_event_t* event);
@@ -138,7 +152,9 @@ private:
     lv_obj_t* profile_avatar_shadow_ = nullptr;
     lv_obj_t* profile_avatar_sphere_ = nullptr;
     lv_obj_t* settings_root_ = nullptr;
+    lv_obj_t* settings_wake_sound_value_label_ = nullptr;
     lv_obj_t* settings_background_value_label_ = nullptr;
+    lv_obj_t* settings_text_color_value_label_ = nullptr;
     lv_obj_t* background_gallery_overlay_ = nullptr;
     lv_obj_t* background_gallery_panel_ = nullptr;
     lv_obj_t* background_preview_box_ = nullptr;
@@ -161,6 +177,7 @@ private:
     size_t active_dock_index_ = 0;
     size_t background_index_ = 0;
     size_t persisted_background_index_ = 0;
+    uint32_t text_color_ = 0xffffff;
     int calendar_year_ = -1;
     int calendar_month_ = -1;
     int calendar_today_ = -1;
@@ -180,7 +197,9 @@ private:
     std::string cached_launcher_title_;
     std::string cached_launcher_body_;
     std::string cached_calendar_title_;
+    std::string cached_settings_wake_sound_;
     std::string cached_settings_background_;
+    std::string cached_settings_text_color_;
     std::string cached_background_title_;
     std::string cached_background_counter_;
     std::array<std::string, kCalendarDayCount> cached_calendar_day_text_ = {};

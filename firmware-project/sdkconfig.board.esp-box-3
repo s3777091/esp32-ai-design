@@ -1,0 +1,7 @@
+# DS-02 build overlay: ESP-BOX-3 (ESP32-S3) + our server + Vietnamese
+# Appended last in SDKCONFIG_DEFAULTS so it wins over upstream defaults.
+CONFIG_BOARD_TYPE_ESP_BOX_3=y
+CONFIG_OTA_URL="https://ai.protexa.cloud/xiaozhi/ota/"
+CONFIG_LANGUAGE_VI_VN=y
+# USE_DS02_HOME_UI defaults to y for ESP-BOX-3 (Kconfig), which also selects
+# the custom wake word "okke". Kept implicit so Kconfig stays the single source.

@@ -110,6 +110,8 @@ const BACKGROUNDS = [
 
 type BackgroundOption = (typeof BACKGROUNDS)[number];
 
+const WAKE_SOUNDS = ["Popup", "Success", "Vibration", "Exclamation", "Off"] as const;
+
 const TEXT_FONTS = [
   {
     key: "be-vietnam",
@@ -240,6 +242,7 @@ export function Ds02Preview() {
   const [previewVolume, setPreviewVolume] = useState(70);
   const [previewBrightness, setPreviewBrightness] = useState(75);
   const [previewTheme, setPreviewTheme] = useState<Ds02Theme>("light");
+  const [wakeSoundIndex, setWakeSoundIndex] = useState(0);
   const [backgroundIndex, setBackgroundIndex] = useState(0);
   const [backgroundGalleryOpen, setBackgroundGalleryOpen] = useState(false);
   const [textFontIndex, setTextFontIndex] = useState(0);
@@ -459,6 +462,9 @@ export function Ds02Preview() {
                     onBrightnessChange: updatePreviewBrightness,
                     theme: previewTheme,
                     onToggleTheme: togglePreviewTheme,
+                    wakeSoundName: WAKE_SOUNDS[wakeSoundIndex],
+                    onChangeWakeSound: () =>
+                      setWakeSoundIndex((value) => (value + 1) % WAKE_SOUNDS.length),
                     backgroundName: BACKGROUNDS[backgroundIndex].label,
                     onChangeBackground: openBackgroundGallery,
                     textStyleName: `${textFont.label} / ${textPaint.label}`,

@@ -10,6 +10,7 @@
 #include "mcp_server.h"
 #include "assets.h"
 #include "settings.h"
+#include "wake_sound_settings.h"
 
 #include <cstring>
 #include <esp_log.h>
@@ -827,12 +828,11 @@ void Application::HandleWakeWordDetectedEvent() {
         if (state == kDeviceStateListening) {
             protocol_->SendStartListening(GetDefaultListeningMode());
             audio_service_.ResetDecoder();
-            audio_service_.PlaySound(Lang::Sounds::OGG_POPUP);
+            PlayWakeSound();
             // Re-enable wake word detection as it was stopped by the detection itself
             audio_service_.EnableWakeWordDetection(true);
         } else {
-            // Play popup sound and start listening again
-            play_popup_on_listening_ = true;
+            play_wake_sound_on_listening_ = true;
             SetListeningMode(GetDefaultListeningMode());
         }
     } else if (state == kDeviceStateActivating) {
@@ -868,9 +868,9 @@ void Application::ContinueWakeWordInvoke(const std::string& wake_word) {
     protocol_->SendWakeWordDetected(wake_word);
     SetListeningMode(GetDefaultListeningMode());
 #else
-    // Set flag to play popup sound after state changes to listening
+    // Set flag to play the configured wake sound after state changes to listening
     // (PlaySound here would be cleared by ResetDecoder in EnableVoiceProcessing)
-    play_popup_on_listening_ = true;
+    play_wake_sound_on_listening_ = true;
     SetListeningMode(GetDefaultListeningMode());
 #endif
 }
@@ -903,7 +903,7 @@ void Application::HandleStateChangedEvent() {
             display->SetEmotion("neutral");
 
             // Make sure the audio processor is running
-            if (play_popup_on_listening_ || !audio_service_.IsAudioProcessorRunning()) {
+            if (play_wake_sound_on_listening_ || !audio_service_.IsAudioProcessorRunning()) {
                 // For auto mode, wait for playback queue to be empty before enabling voice processing
                 // This prevents audio truncation when STOP arrives late due to network jitter
                 if (listening_mode_ == kListeningModeAutoStop) {
@@ -923,10 +923,10 @@ void Application::HandleStateChangedEvent() {
             audio_service_.EnableWakeWordDetection(false);
 #endif
             
-            // Play popup sound after ResetDecoder (in EnableVoiceProcessing) has been called
-            if (play_popup_on_listening_) {
-                play_popup_on_listening_ = false;
-                audio_service_.PlaySound(Lang::Sounds::OGG_POPUP);
+            // Play the configured wake sound after ResetDecoder (in EnableVoiceProcessing) has been called
+            if (play_wake_sound_on_listening_) {
+                play_wake_sound_on_listening_ = false;
+                PlayWakeSound();
             }
             break;
         case kDeviceStateSpeaking:
@@ -1132,6 +1132,13 @@ void Application::SetAecMode(AecMode mode) {
             protocol_->CloseAudioChannel();
         }
     });
+}
+
+void Application::PlayWakeSound() {
+    auto sound = WakeSoundSettings::Sound(WakeSoundSettings::LoadIndex());
+    if (!sound.empty()) {
+        audio_service_.PlaySound(sound);
+    }
 }
 
 void Application::PlaySound(const std::string_view& sound) {
