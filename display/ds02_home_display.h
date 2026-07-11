@@ -38,6 +38,7 @@ public:
     void ShowAwakeStandby();
     void ShowPureBlack();
     void ShowLauncher();
+    void ShowOnboardSplash(int duration_ms = 4500);
     void AdvanceStandbyButtonState();
     void WakeFromWakeWord(const char* wake_word = nullptr);
     void SetProfileVoiceActive(bool active);
@@ -76,6 +77,7 @@ private:
     void CreateSettingsObjects();
     void CreateWakeSoundPickerObjects();
     void CreateBackgroundGalleryObjects();
+    void CreateOnboardSplashObjects();
     void CreateDockObjects();
     void RefreshHomeData();
     void RefreshClock();
@@ -91,6 +93,7 @@ private:
     void RefreshBackgroundGallery();
     void RefreshLauncherPage(bool force = false);
     void ApplyStandbyState();
+    void HideOnboardSplash();
     void SelectDockItem(size_t index);
     void ApplyDockSelection();
     void ApplyWakeSoundIndex(int index);
@@ -115,6 +118,7 @@ private:
 
     static void OnRefreshTimer(void* arg);
     static void OnProfileAvatarTimer(void* arg);
+    static void OnOnboardSplashTimer(void* arg);
     static void OnDockButtonClicked(lv_event_t* event);
     static void OnSettingsWakeSoundClicked(lv_event_t* event);
     static void OnWakeSoundPickerOverlayClicked(lv_event_t* event);
@@ -138,6 +142,7 @@ private:
     StandbyState standby_state_ = StandbyState::Dim;
     esp_timer_handle_t refresh_timer_ = nullptr;
     esp_timer_handle_t profile_avatar_timer_ = nullptr;
+    esp_timer_handle_t onboard_splash_timer_ = nullptr;
 
     lv_obj_t* root_ = nullptr;
     lv_obj_t* system_bar_ = nullptr;
@@ -185,6 +190,8 @@ private:
     lv_obj_t* background_preview_image_obj_ = nullptr;
     lv_obj_t* background_title_label_ = nullptr;
     lv_obj_t* background_counter_label_ = nullptr;
+    lv_obj_t* onboard_splash_layer_ = nullptr;
+    lv_obj_t* onboard_splash_logo_ = nullptr;
     lv_obj_t* dock_ = nullptr;
     std::array<lv_obj_t*, kWeekdayCount> calendar_weekday_labels_ = {};
     std::array<lv_obj_t*, kCalendarDayCount> calendar_day_cells_ = {};
@@ -196,6 +203,7 @@ private:
     std::array<lv_obj_t*, kDockItemCount> dock_icon_labels_ = {};
 
     std::unique_ptr<LvglImage> wallpaper_image_ = nullptr;
+    std::unique_ptr<LvglImage> onboard_logo_image_ = nullptr;
     std::array<std::unique_ptr<LvglImage>, kBackgroundCount> background_image_cache_ = {};
     std::array<bool, kBackgroundCount> background_load_failed_ = {};
     Ds02BluetoothStateProvider bluetooth_provider_ = nullptr;

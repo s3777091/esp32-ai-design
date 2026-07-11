@@ -37,6 +37,7 @@ set(SOURCES "audio/audio_codec.cc"
             "settings.cc"
             "device_state_machine.cc"
             "assets.cc"
+            "onboard_boot.cc"
             "main.cc"
             )
 
@@ -941,6 +942,10 @@ if(NOT LANG_DIR STREQUAL "en-US")
 endif()
 
 file(GLOB COMMON_SOUNDS ${CMAKE_CURRENT_SOURCE_DIR}/assets/common/*.ogg)
+set(ONBOARD_BOOT_ASSETS
+    ${CMAKE_CURRENT_SOURCE_DIR}/onboard/logo.png
+    ${CMAKE_CURRENT_SOURCE_DIR}/onboard/boot.mp3
+)
 
 # If target chip is ESP32, exclude specific files to avoid build errors
 if(CONFIG_IDF_TARGET_ESP32)
@@ -982,7 +987,7 @@ if(CONFIG_BOARD_TYPE_ESP_VOCAT)
 endif()
 
 idf_component_register(SRCS ${SOURCES}
-                    EMBED_FILES ${LANG_SOUNDS} ${COMMON_SOUNDS}
+                    EMBED_FILES ${LANG_SOUNDS} ${COMMON_SOUNDS} ${ONBOARD_BOOT_ASSETS}
                     INCLUDE_DIRS ${INCLUDE_DIRS}
                     WHOLE_ARCHIVE
                     PRIV_REQUIRES

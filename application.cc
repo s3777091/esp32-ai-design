@@ -12,6 +12,7 @@
 #include "settings.h"
 #include "wake_sound_settings.h"
 #include "alarm_settings.h"
+#include "onboard_boot.h"
 
 #include <cstring>
 #include <esp_log.h>
@@ -85,6 +86,7 @@ void Application::Initialize() {
     auto codec = board.GetAudioCodec();
     audio_service_.Initialize(codec);
     audio_service_.Start();
+    audio_service_.PlayMp3(OnboardBoot::MusicMp3());
 
     AudioServiceCallbacks callbacks;
     callbacks.on_send_queue_available = [this]() {

@@ -1,6 +1,10 @@
 #include "audio_service.h"
 #include <esp_log.h>
+#include <algorithm>
 #include <cstring>
+#include "esp_audio_dec_default.h"
+#include "esp_audio_simple_dec.h"
+#include "esp_audio_simple_dec_default.h"
 
 #define RATE_CVT_CFG(_src_rate, _dest_rate, _channel)        \
     (esp_ae_rate_cvt_cfg_t)                                  \
@@ -503,6 +507,32 @@ void AudioService::PushTaskToEncodeQueue(AudioTaskType type, std::vector<int16_t
     audio_queue_cv_.notify_all();
 }
 
+bool AudioService::PushTaskToPlaybackQueue(std::vector<int16_t>&& pcm, uint32_t generation) {
+    if (pcm.empty()) {
+        return true;
+    }
+
+    auto task = std::make_unique<AudioTask>();
+    task->type = kAudioTaskTypeDecodeToPlaybackQueue;
+    task->pcm = std::move(pcm);
+    task->timestamp = 0;
+
+    std::unique_lock<std::mutex> lock(audio_queue_mutex_);
+    audio_queue_cv_.wait(lock, [this, generation]() {
+        return service_stopped_ ||
+            playback_generation_.load() != generation ||
+            audio_playback_queue_.size() < MAX_PLAYBACK_TASKS_IN_QUEUE;
+    });
+
+    if (service_stopped_ || playback_generation_.load() != generation) {
+        return false;
+    }
+
+    audio_playback_queue_.push_back(std::move(task));
+    audio_queue_cv_.notify_all();
+    return true;
+}
+
 bool AudioService::PushPacketToDecodeQueue(std::unique_ptr<AudioStreamPacket> packet, bool wait) {
     std::unique_lock<std::mutex> lock(audio_queue_mutex_);
     if (audio_decode_queue_.size() >= MAX_DECODE_PACKETS_IN_QUEUE) {
@@ -653,6 +683,206 @@ void AudioService::PlaySound(const std::string_view& ogg) {
     demuxer->Process(buf, size);
 }
 
+void AudioService::PlayMp3(const std::string_view& mp3) {
+    if (mp3.empty()) {
+        return;
+    }
+
+    struct Mp3TaskContext {
+        AudioService* service;
+        const uint8_t* data;
+        size_t size;
+        uint32_t generation;
+    };
+
+    auto* context = new Mp3TaskContext{
+        this,
+        reinterpret_cast<const uint8_t*>(mp3.data()),
+        mp3.size(),
+        playback_generation_.load(),
+    };
+
+    auto ret = xTaskCreate([](void* arg) {
+        auto* context = static_cast<Mp3TaskContext*>(arg);
+        context->service->DecodeMp3Task(context->data, context->size, context->generation);
+        delete context;
+        vTaskDelete(nullptr);
+    }, "mp3_playback", 2048 * 12, context, 2, nullptr);
+
+    if (ret != pdPASS) {
+        ESP_LOGE(TAG, "Failed to create MP3 playback task");
+        delete context;
+    }
+}
+
+void AudioService::DecodeMp3Task(const uint8_t* data, size_t size, uint32_t generation) {
+    if (data == nullptr || size == 0 || codec_ == nullptr) {
+        return;
+    }
+
+    if (!codec_->output_enabled()) {
+        esp_timer_stop(audio_power_timer_);
+        esp_timer_start_periodic(audio_power_timer_, AUDIO_POWER_CHECK_INTERVAL_MS * 1000);
+        codec_->EnableOutput(true);
+    }
+
+    if (esp_audio_dec_register_default() != ESP_AUDIO_ERR_OK) {
+        ESP_LOGE(TAG, "Failed to register default audio decoders");
+        return;
+    }
+    if (esp_audio_simple_dec_register_default() != ESP_AUDIO_ERR_OK) {
+        ESP_LOGE(TAG, "Failed to register default simple decoders");
+        esp_audio_dec_unregister_default();
+        return;
+    }
+
+    esp_audio_simple_dec_handle_t decoder = nullptr;
+    esp_audio_simple_dec_cfg_t dec_cfg = {
+        .dec_type = ESP_AUDIO_SIMPLE_DEC_TYPE_MP3,
+        .dec_cfg = nullptr,
+        .cfg_size = 0,
+        .use_frame_dec = false,
+    };
+
+    auto ret = esp_audio_simple_dec_open(&dec_cfg, &decoder);
+    if (ret != ESP_AUDIO_ERR_OK) {
+        ESP_LOGE(TAG, "Failed to open MP3 decoder: %d", ret);
+        esp_audio_simple_dec_unregister_default();
+        esp_audio_dec_unregister_default();
+        return;
+    }
+
+    constexpr uint32_t kInputChunkSize = 512;
+    uint32_t output_buffer_size = 4096;
+    std::vector<uint8_t> output_buffer(output_buffer_size);
+    esp_audio_simple_dec_info_t info = {};
+    bool info_ready = false;
+    esp_ae_rate_cvt_handle_t resampler = nullptr;
+    int resampler_source_rate = 0;
+
+    size_t offset = 0;
+    while (offset < size &&
+           !service_stopped_ &&
+           playback_generation_.load() == generation) {
+        const uint32_t chunk_size = static_cast<uint32_t>(std::min<size_t>(kInputChunkSize, size - offset));
+        esp_audio_simple_dec_raw_t raw = {
+            .buffer = const_cast<uint8_t*>(data + offset),
+            .len = chunk_size,
+            .eos = offset + chunk_size >= size,
+            .consumed = 0,
+            .frame_recover = ESP_AUDIO_SIMPLE_DEC_RECOVERY_NONE,
+        };
+        const uint32_t original_len = raw.len;
+
+        while (raw.len > 0 &&
+               !service_stopped_ &&
+               playback_generation_.load() == generation) {
+            esp_audio_simple_dec_out_t out_frame = {
+                .buffer = output_buffer.data(),
+                .len = output_buffer_size,
+                .needed_size = 0,
+                .decoded_size = 0,
+            };
+
+            ret = esp_audio_simple_dec_process(decoder, &raw, &out_frame);
+            if (ret == ESP_AUDIO_ERR_BUFF_NOT_ENOUGH) {
+                output_buffer_size = out_frame.needed_size;
+                output_buffer.resize(output_buffer_size);
+                continue;
+            }
+            if (ret != ESP_AUDIO_ERR_OK) {
+                ESP_LOGE(TAG, "Failed to decode MP3 data: %d", ret);
+                offset = size;
+                break;
+            }
+
+            if (out_frame.decoded_size > 0) {
+                if (!info_ready) {
+                    ret = esp_audio_simple_dec_get_info(decoder, &info);
+                    if (ret != ESP_AUDIO_ERR_OK) {
+                        ESP_LOGE(TAG, "Failed to read MP3 info: %d", ret);
+                        offset = size;
+                        break;
+                    }
+                    info_ready = true;
+                    ESP_LOGI(TAG, "MP3 info: %ld Hz, %d-bit, %d channel",
+                             info.sample_rate, info.bits_per_sample, info.channel);
+                    if (info.bits_per_sample != 16 || info.channel == 0) {
+                        ESP_LOGE(TAG, "Unsupported MP3 output format");
+                        offset = size;
+                        break;
+                    }
+                }
+
+                const auto* samples = reinterpret_cast<const int16_t*>(out_frame.buffer);
+                const size_t sample_count = out_frame.decoded_size / sizeof(int16_t);
+                const size_t frame_count = sample_count / info.channel;
+                std::vector<int16_t> mono(frame_count);
+
+                for (size_t frame = 0; frame < frame_count; ++frame) {
+                    int32_t sum = 0;
+                    for (uint8_t channel = 0; channel < info.channel; ++channel) {
+                        sum += samples[frame * info.channel + channel];
+                    }
+                    mono[frame] = static_cast<int16_t>(sum / info.channel);
+                }
+
+                if (static_cast<int>(info.sample_rate) != codec_->output_sample_rate()) {
+                    if (resampler == nullptr || resampler_source_rate != static_cast<int>(info.sample_rate)) {
+                        if (resampler != nullptr) {
+                            esp_ae_rate_cvt_close(resampler);
+                            resampler = nullptr;
+                        }
+                        esp_ae_rate_cvt_cfg_t cfg = RATE_CVT_CFG(
+                            info.sample_rate, codec_->output_sample_rate(), ESP_AUDIO_MONO);
+                        auto resampler_ret = esp_ae_rate_cvt_open(&cfg, &resampler);
+                        if (resampler == nullptr) {
+                            ESP_LOGE(TAG, "Failed to create MP3 resampler: %d", resampler_ret);
+                            offset = size;
+                            break;
+                        }
+                        resampler_source_rate = static_cast<int>(info.sample_rate);
+                    }
+
+                    uint32_t target_size = 0;
+                    esp_ae_rate_cvt_get_max_out_sample_num(resampler, mono.size(), &target_size);
+                    std::vector<int16_t> resampled(target_size);
+                    uint32_t actual_output = target_size;
+                    esp_ae_rate_cvt_process(resampler, (esp_ae_sample_t)mono.data(), mono.size(),
+                                            (esp_ae_sample_t)resampled.data(), &actual_output);
+                    resampled.resize(actual_output);
+                    mono = std::move(resampled);
+                }
+
+                if (!PushTaskToPlaybackQueue(std::move(mono), generation)) {
+                    offset = size;
+                    break;
+                }
+            }
+
+            if (raw.consumed == 0) {
+                break;
+            }
+            raw.len -= raw.consumed;
+            raw.buffer += raw.consumed;
+        }
+
+        const uint32_t consumed = original_len - raw.len;
+        if (consumed == 0) {
+            ESP_LOGW(TAG, "MP3 decoder made no progress");
+            break;
+        }
+        offset += consumed;
+    }
+
+    if (resampler != nullptr) {
+        esp_ae_rate_cvt_close(resampler);
+    }
+    esp_audio_simple_dec_close(decoder);
+    esp_audio_simple_dec_unregister_default();
+    esp_audio_dec_unregister_default();
+}
+
 bool AudioService::IsIdle() {
     std::lock_guard<std::mutex> lock(audio_queue_mutex_);
     return audio_encode_queue_.empty() && audio_decode_queue_.empty() && audio_playback_queue_.empty() && audio_testing_queue_.empty();
@@ -667,6 +897,7 @@ void AudioService::WaitForPlaybackQueueEmpty() {
 
 void AudioService::ResetDecoder() {
     std::lock_guard<std::mutex> lock(audio_queue_mutex_);
+    playback_generation_++;
     std::unique_lock<std::mutex> decoder_lock(decoder_mutex_);
     if (opus_decoder_ != nullptr) {
         esp_opus_dec_reset(opus_decoder_);

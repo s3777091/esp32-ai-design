@@ -8,6 +8,7 @@
 #include "lvgl_theme.h"
 #include "settings.h"
 #include "wake_sound_settings.h"
+#include "onboard_boot.h"
 
 #include <algorithm>
 #include <array>
@@ -35,6 +36,7 @@ constexpr int kSystemBarHeight = 20;
 constexpr int kDockHeight = 38;
 constexpr int kDockBottomMargin = 4;
 constexpr int kLowBatteryThreshold = 15;
+constexpr int kOnboardSplashDurationMs = 4500;
 constexpr size_t kProfileDockIndex = 3;
 constexpr size_t kSettingsDockIndex = 5;
 
@@ -585,6 +587,12 @@ Ds02HomeDisplay::~Ds02HomeDisplay() {
         esp_timer_delete(refresh_timer_);
         refresh_timer_ = nullptr;
     }
+
+    if (onboard_splash_timer_ != nullptr) {
+        esp_timer_stop(onboard_splash_timer_);
+        esp_timer_delete(onboard_splash_timer_);
+        onboard_splash_timer_ = nullptr;
+    }
 }
 
 void Ds02HomeDisplay::SetupUI() {
@@ -607,6 +615,7 @@ void Ds02HomeDisplay::SetupUI() {
     CreateLowBatteryNotificationObjects();
     CreateWakeSoundPickerObjects();
     CreateBackgroundGalleryObjects();
+    CreateOnboardSplashObjects();
     ApplyThemeColors(current_theme_);
 
     Settings settings("display", false);
@@ -647,6 +656,14 @@ void Ds02HomeDisplay::SetupUI() {
 
     RefreshHomeData();
     ApplyStandbyState();
+    if (onboard_splash_layer_ != nullptr) {
+        SetVisible(onboard_splash_layer_, true);
+        lv_obj_move_foreground(onboard_splash_layer_);
+        if (onboard_splash_timer_ != nullptr) {
+            esp_timer_stop(onboard_splash_timer_);
+            esp_timer_start_once(onboard_splash_timer_, kOnboardSplashDurationMs * 1000);
+        }
+    }
 }
 
 void Ds02HomeDisplay::CreateStandbyObjects() {
@@ -1480,6 +1497,48 @@ void Ds02HomeDisplay::CreateBackgroundGalleryObjects() {
     RefreshBackgroundGallery();
 }
 
+void Ds02HomeDisplay::CreateOnboardSplashObjects() {
+    if (root_ == nullptr) {
+        return;
+    }
+
+    onboard_splash_layer_ = lv_obj_create(root_);
+    lv_obj_set_size(onboard_splash_layer_, LV_PCT(100), LV_PCT(100));
+    ClearBoxStyle(onboard_splash_layer_);
+    lv_obj_set_style_bg_color(onboard_splash_layer_, Color(0x000000), 0);
+    lv_obj_set_style_bg_opa(onboard_splash_layer_, LV_OPA_COVER, 0);
+    lv_obj_add_flag(onboard_splash_layer_, LV_OBJ_FLAG_HIDDEN);
+
+    const void* logo_data = OnboardBoot::LogoPngData();
+    const size_t logo_size = OnboardBoot::LogoPngSize();
+    if (logo_data != nullptr && logo_size > 0) {
+        onboard_logo_image_ = std::make_unique<LvglRawImage>(const_cast<void*>(logo_data), logo_size);
+        onboard_splash_logo_ = lv_image_create(onboard_splash_layer_);
+        lv_image_set_src(onboard_splash_logo_, onboard_logo_image_->image_dsc());
+
+        lv_image_header_t header = {};
+        if (GetImageHeader(onboard_logo_image_->image_dsc(), header)) {
+            const int safe_width = width_ > 0 ? width_ : 320;
+            const int safe_height = height_ > 0 ? height_ : 240;
+            const int max_logo_width = Clamp(safe_width * 42 / 100, 72, safe_width);
+            const int max_logo_height = Clamp(safe_height * 55 / 100, 72, safe_height);
+            const int scale_width = std::max(1, max_logo_width * 256 / static_cast<int>(header.w));
+            const int scale_height = std::max(1, max_logo_height * 256 / static_cast<int>(header.h));
+            lv_image_set_scale(onboard_splash_logo_, std::min(scale_width, scale_height));
+        }
+        lv_obj_center(onboard_splash_logo_);
+    }
+
+    esp_timer_create_args_t timer_args = {
+        .callback = OnOnboardSplashTimer,
+        .arg = this,
+        .dispatch_method = ESP_TIMER_TASK,
+        .name = "onboard_splash",
+        .skip_unhandled_events = true,
+    };
+    esp_timer_create(&timer_args, &onboard_splash_timer_);
+}
+
 void Ds02HomeDisplay::CreateDockObjects() {
     const int safe_width = width_ > 0 ? width_ : 320;
     const int dock_width = Clamp(safe_width - 28, 220, 292);
@@ -1595,6 +1654,20 @@ void Ds02HomeDisplay::ShowLauncher() {
     ApplyStandbyState();
 }
 
+void Ds02HomeDisplay::ShowOnboardSplash(int duration_ms) {
+    DisplayLockGuard lock(this);
+    if (onboard_splash_layer_ == nullptr) {
+        return;
+    }
+
+    SetVisible(onboard_splash_layer_, true);
+    lv_obj_move_foreground(onboard_splash_layer_);
+    if (onboard_splash_timer_ != nullptr && duration_ms > 0) {
+        esp_timer_stop(onboard_splash_timer_);
+        esp_timer_start_once(onboard_splash_timer_, duration_ms * 1000);
+    }
+}
+
 void Ds02HomeDisplay::AdvanceStandbyButtonState() {
     if (standby_state_ == StandbyState::Dim) {
         standby_state_ = StandbyState::Awake;
@@ -1648,6 +1721,10 @@ void Ds02HomeDisplay::ApplyStandbyState() {
     } else {
         lv_obj_set_style_bg_opa(dim_overlay_, LV_OPA_TRANSP, 0);
     }
+}
+
+void Ds02HomeDisplay::HideOnboardSplash() {
+    SetVisible(onboard_splash_layer_, false);
 }
 
 void Ds02HomeDisplay::UpdateStatusBar(bool update_all) {
@@ -2468,6 +2545,16 @@ void Ds02HomeDisplay::OnProfileAvatarTimer(void* arg) {
         display->profile_avatar_pulse_dir_ = 1;
     }
     display->ApplyProfileAvatarPulse(display->profile_avatar_pulse_);
+}
+
+void Ds02HomeDisplay::OnOnboardSplashTimer(void* arg) {
+    auto* display = static_cast<Ds02HomeDisplay*>(arg);
+    if (display == nullptr) {
+        return;
+    }
+
+    DisplayLockGuard lock(display);
+    display->HideOnboardSplash();
 }
 
 void Ds02HomeDisplay::OnDockButtonClicked(lv_event_t* event) {
