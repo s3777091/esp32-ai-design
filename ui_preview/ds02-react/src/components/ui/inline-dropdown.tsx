@@ -7,6 +7,7 @@ import {
   Bluetooth,
   ChevronRight,
   Image,
+  Languages,
   Mic2,
   Moon,
   Palette,
@@ -43,6 +44,8 @@ export interface Ds02SettingsPanelProps {
   onChangeBackground: () => void;
   textStyleName: string;
   onChangeTextStyle: () => void;
+  translateModeName: string;
+  onChangeTranslate: () => void;
 }
 
 export function Ds02SettingsPanel({
@@ -67,6 +70,8 @@ export function Ds02SettingsPanel({
   onChangeBackground,
   textStyleName,
   onChangeTextStyle,
+  translateModeName,
+  onChangeTranslate,
 }: Ds02SettingsPanelProps) {
   const bluetoothOn = bluetoothAvailable === true;
   const isLight = theme === "light";
@@ -212,6 +217,18 @@ export function Ds02SettingsPanel({
           value={<ChevronRight size={14} aria-hidden />}
         />
       </SettingsGroup>
+
+      <SettingsGroup theme={theme}>
+        <SettingRow
+          theme={theme}
+          icon={<Languages size={15} />}
+          iconClassName="bg-indigo-500"
+          title="Translate"
+          detail={translateModeName}
+          onClick={onChangeTranslate}
+          value={<ChevronRight size={14} aria-hidden />}
+        />
+      </SettingsGroup>
     </div>
   );
 }
@@ -225,6 +242,7 @@ export const Component = () => {
   const [wakeSoundIndex, setWakeSoundIndex] = useState(0);
   const [backgroundIndex, setBackgroundIndex] = useState(0);
   const [textStyleIndex, setTextStyleIndex] = useState(0);
+  const [translateModeIndex, setTranslateModeIndex] = useState(0);
   const backgrounds = [
     "Mountain",
     "Abstract",
@@ -252,6 +270,7 @@ export const Component = () => {
     "Noto Sans / Aurora",
     "Segoe UI / Sunrise",
   ];
+  const translateModes = ["Vi <-> Chinese", "Vi <-> En"];
   const wakeSounds = [
     "Popup",
     "Success",
@@ -291,6 +310,10 @@ export const Component = () => {
         textStyleName={textStyles[textStyleIndex]}
         onChangeTextStyle={() =>
           setTextStyleIndex((value) => (value + 1) % textStyles.length)
+        }
+        translateModeName={translateModes[translateModeIndex]}
+        onChangeTranslate={() =>
+          setTranslateModeIndex((value) => (value + 1) % translateModes.length)
         }
       />
     </div>

@@ -13,6 +13,7 @@ import { DS02_WAKE_WORD } from "@/lib/ds02-config";
 import "./ds02.css";
 
 type ScreenState = "dim" | "awake" | "black";
+type TranslateSide = "center" | "left" | "right";
 
 interface StateInfo {
   key: ScreenState;
@@ -147,6 +148,14 @@ const BLUETOOTH_DEVICE_OPTIONS: readonly DeviceOption[] = [
   { key: "car-kit", label: "Car Kit", detail: "Previously paired" },
   { key: "dev-keyboard", label: "Dev Keyboard", detail: "Input device" },
 ];
+
+const TRANSLATE_MODES = ["Vi <-> Chinese", "Vi <-> En"] as const;
+
+function getTranslateLanguages(mode: string): [string, string] {
+  return mode.toLowerCase().includes("chinese")
+    ? ["Vi", "Chinese"]
+    : ["Vi", "En"];
+}
 
 const RINGTONE_AUDIO_MODULES = import.meta.glob<string>(
   "../../../../../ringtone/*.mp3",
@@ -326,6 +335,8 @@ export function Ds02Preview() {
   const [textFontIndex, setTextFontIndex] = useState(0);
   const [textPaintIndex, setTextPaintIndex] = useState(0);
   const [textStyleOpen, setTextStyleOpen] = useState(false);
+  const [translateModeIndex, setTranslateModeIndex] = useState(0);
+  const [translateSide, setTranslateSide] = useState<TranslateSide>("center");
   const ringtoneAudioRef = useRef<HTMLAudioElement | null>(null);
   const ringtonePreviewTimerRef = useRef<number | null>(null);
 
@@ -425,6 +436,10 @@ export function Ds02Preview() {
   }, [lowBatteryNoticeVisible]);
 
   useEffect(() => {
+    setTranslateSide("center");
+  }, [translateModeIndex]);
+
+  useEffect(() => {
     if (ringtoneAudioRef.current) {
       ringtoneAudioRef.current.volume = previewVolume / 100;
     }
@@ -446,6 +461,7 @@ export function Ds02Preview() {
   const showDock = state.key === "black";
   const textFont = TEXT_FONTS[textFontIndex] ?? TEXT_FONTS[0];
   const textPaint = TEXT_PAINTS[textPaintIndex] ?? TEXT_PAINTS[0];
+  const translateMode = TRANSLATE_MODES[translateModeIndex] ?? TRANSLATE_MODES[0];
   const wakeSound = WAKE_SOUNDS[wakeSoundIndex] ?? WAKE_SOUNDS[0];
   const wifiDevice = WIFI_DEVICE_OPTIONS[wifiDeviceIndex] ?? WIFI_DEVICE_OPTIONS[0];
   const bluetoothDevice =
@@ -639,6 +655,8 @@ export function Ds02Preview() {
                 <DockPage
                   activeTab={activeTab}
                   onSelect={setActiveTab}
+                  translateSide={translateSide}
+                  onSelectTranslateSide={setTranslateSide}
                   settings={{
                     offline,
                     wifiDeviceName: wifiDevice.label,
@@ -661,6 +679,11 @@ export function Ds02Preview() {
                     onChangeBackground: openBackgroundGallery,
                     textStyleName: `${textFont.label} / ${textPaint.label}`,
                     onChangeTextStyle: openTextStyle,
+                    translateModeName: translateMode,
+                    onChangeTranslate: () =>
+                      setTranslateModeIndex(
+                        (value) => (value + 1) % TRANSLATE_MODES.length
+                      ),
                   }}
                 />
               )}
@@ -1329,7 +1352,7 @@ const TAB_PAGES: Record<number, { title: string; body: string }> = {
   1: { title: "Home", body: "" }, // Home renders the real <Calendar /> below.
   2: { title: "Search", body: "Tìm kiếm thiết bị, bài hát, cài đặt…" },
   3: { title: "Alerts", body: "Không có thông báo mới." },
-  4: { title: "Ekko Robot", body: `Wake word: ${DS02_WAKE_WORD}` },
+  4: { title: "Translate", body: "Vi <-> Chinese / Vi <-> En" },
   5: { title: "Music", body: "Chưa có bài hát nào đang phát." },
   6: { title: "Settings", body: "Wi-Fi, âm thanh, hiển thị, ngôn ngữ…" },
 };
@@ -1337,10 +1360,14 @@ const TAB_PAGES: Record<number, { title: string; body: string }> = {
 function DockPage({
   activeTab,
   onSelect,
+  translateSide,
+  onSelectTranslateSide,
   settings,
 }: {
   activeTab: number;
   onSelect: (id: number) => void;
+  translateSide: TranslateSide;
+  onSelectTranslateSide: (side: TranslateSide) => void;
   settings: Ds02SettingsPanelProps;
 }) {
   const isHome = activeTab === 1;
@@ -1360,7 +1387,13 @@ function DockPage({
           </div>
         ) : isProfile ? (
           <div className="ds02-dock-page">
-            <ProfileAvatar3D speaking={false} theme={settings.theme} />
+            <ProfileAvatar3D
+              speaking={false}
+              theme={settings.theme}
+              translateModeName={settings.translateModeName}
+              activeSide={translateSide}
+              onSelectSide={onSelectTranslateSide}
+            />
           </div>
         ) : isSettings ? (
           <div className="ds02-dock-page">
@@ -1398,17 +1431,45 @@ function DockPage({
 function ProfileAvatar3D({
   speaking,
   theme,
+  translateModeName,
+  activeSide,
+  onSelectSide,
 }: {
   speaking: boolean;
   theme: Ds02Theme;
+  translateModeName: string;
+  activeSide: TranslateSide;
+  onSelectSide: (side: TranslateSide) => void;
 }) {
+  const [leftLanguage, rightLanguage] = getTranslateLanguages(translateModeName);
+
   return (
     <div
       className="profile-avatar-screen"
       data-theme={theme}
       data-speaking={speaking ? "true" : "false"}
-      aria-label="Profile voice avatar"
+      data-side={activeSide}
+      aria-label="Translate voice avatar"
     >
+      <button
+        type="button"
+        className="translate-side-hit translate-side-hit-left"
+        aria-label={`Move to ${leftLanguage}`}
+        onClick={() => onSelectSide("left")}
+      />
+      <button
+        type="button"
+        className="translate-side-hit translate-side-hit-right"
+        aria-label={`Move to ${rightLanguage}`}
+        onClick={() => onSelectSide("right")}
+      />
+      <div className="translate-language translate-language-left">
+        {leftLanguage}
+      </div>
+      <div className="translate-language translate-language-right">
+        {rightLanguage}
+      </div>
+      <div className="translate-audio-spine" aria-hidden />
       <div className="profile-avatar-stage">
         <div className="profile-avatar-orb" aria-hidden>
           <span className="profile-avatar-cloud profile-avatar-cloud-a" />

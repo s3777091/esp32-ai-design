@@ -1,14 +1,14 @@
 "use client";
 
 import { motion } from "framer-motion";
-import { Calendar, Search, Bell, User, Settings, Music } from "lucide-react";
+import { Calendar, Search, Bell, Languages, Settings, Music } from "lucide-react";
 import { useState, type ReactNode } from "react";
 
 const defaultItems: TiltedDockItem[] = [
   { id: 1, icon: <Calendar size={28} />, label: "Lịch" },
   { id: 2, icon: <Search size={28} />, label: "Search" },
   { id: 3, icon: <Bell size={28} />, label: "Alerts" },
-  { id: 4, icon: <User size={28} />, label: "Profile" },
+  { id: 4, icon: <Languages size={28} />, label: "Translate" },
   { id: 5, icon: <Music size={28} />, label: "Music" },
   { id: 6, icon: <Settings size={28} />, label: "Settings" },
 ];

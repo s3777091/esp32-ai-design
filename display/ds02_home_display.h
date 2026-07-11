@@ -86,6 +86,7 @@ private:
     void UpdateLowBatteryNotification(int level, bool charging, bool discharging);
     void RefreshCalendar(bool force = false);
     void RefreshSettingsPage();
+    void RefreshTranslateLabels();
     void RefreshWakeSoundPicker();
     void RefreshBackgroundGallery();
     void RefreshLauncherPage(bool force = false);
@@ -106,6 +107,11 @@ private:
     void ApplyTextColorToObjectTree(lv_obj_t* obj, lv_color_t color);
     void SetProfileAvatarSpeaking(bool speaking);
     void ApplyProfileAvatarPulse(int value);
+    void MoveTranslateOrb(int side);
+    void ToggleTranslateMode();
+    const char* TranslateModeLabel() const;
+    const char* TranslateLeftLanguage() const;
+    const char* TranslateRightLanguage() const;
 
     static void OnRefreshTimer(void* arg);
     static void OnProfileAvatarTimer(void* arg);
@@ -115,6 +121,9 @@ private:
     static void OnWakeSoundPickerCloseClicked(lv_event_t* event);
     static void OnWakeSoundOptionClicked(lv_event_t* event);
     static void OnSettingsBackgroundClicked(lv_event_t* event);
+    static void OnSettingsTranslateClicked(lv_event_t* event);
+    static void OnTranslateLeftClicked(lv_event_t* event);
+    static void OnTranslateRightClicked(lv_event_t* event);
     static void OnBackgroundGalleryPrevClicked(lv_event_t* event);
     static void OnBackgroundGalleryNextClicked(lv_event_t* event);
     static void OnBackgroundGalleryCloseClicked(lv_event_t* event);
@@ -158,12 +167,15 @@ private:
     lv_obj_t* calendar_root_ = nullptr;
     lv_obj_t* calendar_month_label_ = nullptr;
     lv_obj_t* profile_avatar_root_ = nullptr;
+    lv_obj_t* translate_left_label_ = nullptr;
+    lv_obj_t* translate_right_label_ = nullptr;
     lv_obj_t* profile_avatar_shadow_ = nullptr;
     lv_obj_t* profile_avatar_sphere_ = nullptr;
     lv_obj_t* settings_root_ = nullptr;
     lv_obj_t* settings_wake_sound_value_label_ = nullptr;
     lv_obj_t* settings_background_value_label_ = nullptr;
     lv_obj_t* settings_text_color_value_label_ = nullptr;
+    lv_obj_t* settings_translate_value_label_ = nullptr;
     lv_obj_t* wake_sound_picker_overlay_ = nullptr;
     lv_obj_t* wake_sound_picker_panel_ = nullptr;
     lv_obj_t* wake_sound_picker_list_ = nullptr;
@@ -197,6 +209,8 @@ private:
     int calendar_month_ = -1;
     int calendar_today_ = -1;
     int calendar_marks_version_ = -1;
+    int translate_mode_index_ = 0;
+    int translate_orb_side_ = 0;
     int profile_avatar_base_size_ = 0;
     int profile_avatar_pulse_ = 0;
     int profile_avatar_pulse_dir_ = 1;
@@ -216,6 +230,9 @@ private:
     std::string cached_settings_wake_sound_;
     std::string cached_settings_background_;
     std::string cached_settings_text_color_;
+    std::string cached_settings_translate_;
+    std::string cached_translate_left_;
+    std::string cached_translate_right_;
     std::string cached_background_title_;
     std::string cached_background_counter_;
     std::array<std::string, kCalendarDayCount> cached_calendar_day_text_ = {};

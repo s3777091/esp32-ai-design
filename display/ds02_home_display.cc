@@ -48,6 +48,7 @@ struct DockItem {
     const char* icon;
     const char* title;
     const char* body;
+    bool use_icon_font;
 };
 
 struct BackgroundItem {
@@ -58,6 +59,12 @@ struct BackgroundItem {
 struct DeviceItem {
     const char* name;
     const char* detail;
+};
+
+struct TranslateModeItem {
+    const char* label;
+    const char* left_language;
+    const char* right_language;
 };
 
 constexpr size_t kDevicePickerMaxItems = 4;
@@ -74,27 +81,38 @@ struct DevicePickerRuntime {
     size_t selected = 0;
 };
 
+#if defined(FONT_AWESOME_LANGUAGE)
+#define DS02_TRANSLATE_DOCK_ICON FONT_AWESOME_LANGUAGE
+#define DS02_TRANSLATE_DOCK_USES_ICON_FONT true
+#elif defined(FONT_AWESOME_GLOBE)
+#define DS02_TRANSLATE_DOCK_ICON FONT_AWESOME_GLOBE
+#define DS02_TRANSLATE_DOCK_USES_ICON_FONT true
+#elif defined(FONT_AWESOME_EARTH_AMERICAS)
+#define DS02_TRANSLATE_DOCK_ICON FONT_AWESOME_EARTH_AMERICAS
+#define DS02_TRANSLATE_DOCK_USES_ICON_FONT true
+#else
+#define DS02_TRANSLATE_DOCK_ICON "TR"
+#define DS02_TRANSLATE_DOCK_USES_ICON_FONT false
+#endif
+
 #if defined(FONT_AWESOME_CALENDAR_DAYS) && defined(FONT_AWESOME_MAGNIFYING_GLASS) && \
-    defined(FONT_AWESOME_BELL) && defined(FONT_AWESOME_USER) && \
-    defined(FONT_AWESOME_MUSIC) && defined(FONT_AWESOME_GEAR)
-constexpr bool kDockUsesIconFont = true;
+    defined(FONT_AWESOME_BELL) && defined(FONT_AWESOME_MUSIC) && defined(FONT_AWESOME_GEAR)
 constexpr std::array<DockItem, 6> kDockItems = {{
-    {FONT_AWESOME_CALENDAR_DAYS, "Calendar", ""},
-    {FONT_AWESOME_MAGNIFYING_GLASS, "Search", "Tim kiem thiet bi, bai hat, cai dat..."},
-    {FONT_AWESOME_BELL, "Alerts", "Khong co thong bao moi."},
-    {FONT_AWESOME_USER, "Ekko Robot", "Wake word: " DS02_WAKE_WORD_DISPLAY},
-    {FONT_AWESOME_MUSIC, "Music", "Chua co bai hat nao dang phat."},
-    {FONT_AWESOME_GEAR, "Settings", "Wi-Fi, am thanh, hien thi, ngon ngu..."},
+    {FONT_AWESOME_CALENDAR_DAYS, "Calendar", "", true},
+    {FONT_AWESOME_MAGNIFYING_GLASS, "Search", "Tim kiem thiet bi, bai hat, cai dat...", true},
+    {FONT_AWESOME_BELL, "Alerts", "Khong co thong bao moi.", true},
+    {DS02_TRANSLATE_DOCK_ICON, "Translate", "Vi <-> Chinese / Vi <-> En", DS02_TRANSLATE_DOCK_USES_ICON_FONT},
+    {FONT_AWESOME_MUSIC, "Music", "Chua co bai hat nao dang phat.", true},
+    {FONT_AWESOME_GEAR, "Settings", "Wi-Fi, am thanh, hien thi, ngon ngu...", true},
 }};
 #else
-constexpr bool kDockUsesIconFont = false;
 constexpr std::array<DockItem, 6> kDockItems = {{
-    {"CAL", "Calendar", ""},
-    {"SRC", "Search", "Tim kiem thiet bi, bai hat, cai dat..."},
-    {"ALT", "Alerts", "Khong co thong bao moi."},
-    {"USR", "Ekko Robot", "Wake word: " DS02_WAKE_WORD_DISPLAY},
-    {"MUS", "Music", "Chua co bai hat nao dang phat."},
-    {"SET", "Settings", "Wi-Fi, am thanh, hien thi, ngon ngu..."},
+    {"CAL", "Calendar", "", false},
+    {"SRC", "Search", "Tim kiem thiet bi, bai hat, cai dat...", false},
+    {"ALT", "Alerts", "Khong co thong bao moi.", false},
+    {"TR", "Translate", "Vi <-> Chinese / Vi <-> En", false},
+    {"MUS", "Music", "Chua co bai hat nao dang phat.", false},
+    {"SET", "Settings", "Wi-Fi, am thanh, hien thi, ngon ngu...", false},
 }};
 #endif
 
@@ -137,6 +155,11 @@ constexpr std::array<DeviceItem, kDevicePickerMaxItems> kBluetoothDeviceItems = 
     {"DS-02 Speaker", "Nearby"},
     {"Car Kit", "Previously paired"},
     {"Dev Keyboard", "Input device"},
+}};
+
+constexpr std::array<TranslateModeItem, 2> kTranslateModeItems = {{
+    {"Vi <-> Chinese", "Vi", "Chinese"},
+    {"Vi <-> En", "Vi", "En"},
 }};
 
 DevicePickerRuntime g_wifi_device_picker;
@@ -592,11 +615,16 @@ void Ds02HomeDisplay::SetupUI() {
     );
     persisted_background_index_ = background_index_;
     text_color_ = static_cast<uint32_t>(settings.GetInt("ds02_text_color", static_cast<int32_t>(text_color_))) & 0xffffff;
+    translate_mode_index_ = Clamp(settings.GetInt("ds02_translate_mode", 0),
+                                  0, static_cast<int>(kTranslateModeItems.size()) - 1);
     if (!ApplyBackgroundIndex(background_index_)) {
         MoveBackground(1);
         persisted_background_index_ = background_index_;
     }
     ApplyTextColor();
+    RefreshSettingsPage();
+    RefreshTranslateLabels();
+    ApplyProfileAvatarPulse(profile_avatar_pulse_);
 
     esp_timer_create_args_t timer_args = {
         .callback = OnRefreshTimer,
@@ -893,7 +921,7 @@ void Ds02HomeDisplay::CreateProfileObjects() {
     const int safe_width = width_ > 0 ? width_ : 320;
     const int safe_height = height_ > 0 ? height_ : 240;
     const int content_height = std::max(120, safe_height - kSystemBarHeight - kDockHeight - kDockBottomMargin - 4);
-    profile_avatar_base_size_ = Clamp(std::min(safe_width, content_height) * 58 / 100, 82, 144);
+    profile_avatar_base_size_ = Clamp(std::min(safe_width, content_height) * 58 / 300, 27, 48);
 
     profile_avatar_root_ = lv_obj_create(launcher_content_);
     lv_obj_set_size(profile_avatar_root_, safe_width, content_height);
@@ -903,13 +931,42 @@ void Ds02HomeDisplay::CreateProfileObjects() {
     lv_obj_align(profile_avatar_root_, LV_ALIGN_TOP_MID, 0, 0);
     lv_obj_add_flag(profile_avatar_root_, LV_OBJ_FLAG_HIDDEN);
 
+    translate_left_label_ = lv_label_create(profile_avatar_root_);
+    lv_obj_set_width(translate_left_label_, std::max(40, safe_width / 2 - 24));
+    lv_obj_set_style_text_color(translate_left_label_, Color(0xe5faff), 0);
+    lv_obj_set_style_text_font(translate_left_label_, &BUILTIN_TEXT_FONT, 0);
+    lv_obj_set_style_text_align(translate_left_label_, LV_TEXT_ALIGN_LEFT, 0);
+    lv_label_set_long_mode(translate_left_label_, LV_LABEL_LONG_DOT);
+    lv_label_set_text(translate_left_label_, TranslateLeftLanguage());
+    lv_obj_align(translate_left_label_, LV_ALIGN_TOP_LEFT, 12, 8);
+
+    translate_right_label_ = lv_label_create(profile_avatar_root_);
+    lv_obj_set_width(translate_right_label_, std::max(40, safe_width / 2 - 24));
+    lv_obj_set_style_text_color(translate_right_label_, Color(0xe5faff), 0);
+    lv_obj_set_style_text_font(translate_right_label_, &BUILTIN_TEXT_FONT, 0);
+    lv_obj_set_style_text_align(translate_right_label_, LV_TEXT_ALIGN_RIGHT, 0);
+    lv_label_set_long_mode(translate_right_label_, LV_LABEL_LONG_DOT);
+    lv_label_set_text(translate_right_label_, TranslateRightLanguage());
+    lv_obj_align(translate_right_label_, LV_ALIGN_TOP_RIGHT, -12, 8);
+
+    auto* translate_spine = lv_obj_create(profile_avatar_root_);
+    lv_obj_set_size(translate_spine, 2, std::max(24, content_height - 20));
+    ClearBoxStyle(translate_spine);
+    lv_obj_set_style_radius(translate_spine, 999, 0);
+    lv_obj_set_style_bg_color(translate_spine, Color(0x67e8f9), 0);
+    lv_obj_set_style_bg_opa(translate_spine, LV_OPA_70, 0);
+    lv_obj_set_style_shadow_width(translate_spine, 8, 0);
+    lv_obj_set_style_shadow_color(translate_spine, Color(0x67e8f9), 0);
+    lv_obj_set_style_shadow_opa(translate_spine, LV_OPA_40, 0);
+    lv_obj_align(translate_spine, LV_ALIGN_CENTER, 0, 0);
+
     profile_avatar_shadow_ = lv_obj_create(profile_avatar_root_);
     lv_obj_set_size(profile_avatar_shadow_, profile_avatar_base_size_, profile_avatar_base_size_);
     ClearBoxStyle(profile_avatar_shadow_);
     lv_obj_set_style_radius(profile_avatar_shadow_, 999, 0);
     lv_obj_set_style_bg_color(profile_avatar_shadow_, Color(0x030605), 0);
     lv_obj_set_style_bg_opa(profile_avatar_shadow_, LV_OPA_70, 0);
-    lv_obj_set_style_shadow_width(profile_avatar_shadow_, 18, 0);
+    lv_obj_set_style_shadow_width(profile_avatar_shadow_, 6, 0);
     lv_obj_set_style_shadow_color(profile_avatar_shadow_, Color(0x000000), 0);
     lv_obj_set_style_shadow_opa(profile_avatar_shadow_, LV_OPA_80, 0);
     lv_obj_align(profile_avatar_shadow_, LV_ALIGN_CENTER, 0, 0);
@@ -922,7 +979,7 @@ void Ds02HomeDisplay::CreateProfileObjects() {
     lv_obj_set_style_bg_grad_color(profile_avatar_sphere_, Color(0x06251a), 0);
     lv_obj_set_style_bg_grad_dir(profile_avatar_sphere_, LV_GRAD_DIR_VER, 0);
     lv_obj_set_style_bg_opa(profile_avatar_sphere_, LV_OPA_COVER, 0);
-    lv_obj_set_style_shadow_width(profile_avatar_sphere_, 10, 0);
+    lv_obj_set_style_shadow_width(profile_avatar_sphere_, 4, 0);
     lv_obj_set_style_shadow_color(profile_avatar_sphere_, Color(0x04110d), 0);
     lv_obj_set_style_shadow_opa(profile_avatar_sphere_, LV_OPA_50, 0);
     lv_obj_align(profile_avatar_sphere_, LV_ALIGN_CENTER, 0, 0);
@@ -933,7 +990,7 @@ void Ds02HomeDisplay::CreateProfileObjects() {
     lv_obj_set_style_radius(cloud_top, 999, 0);
     lv_obj_set_style_bg_color(cloud_top, Color(0xf4fdff), 0);
     lv_obj_set_style_bg_opa(cloud_top, LV_OPA_70, 0);
-    lv_obj_align(cloud_top, LV_ALIGN_TOP_LEFT, 18, 17);
+    lv_obj_align(cloud_top, LV_ALIGN_TOP_LEFT, 6, 6);
 
     auto* cloud_side = lv_obj_create(profile_avatar_sphere_);
     lv_obj_set_size(cloud_side, LV_PCT(34), LV_PCT(26));
@@ -941,7 +998,7 @@ void Ds02HomeDisplay::CreateProfileObjects() {
     lv_obj_set_style_radius(cloud_side, 999, 0);
     lv_obj_set_style_bg_color(cloud_side, Color(0xecffdb), 0);
     lv_obj_set_style_bg_opa(cloud_side, LV_OPA_70, 0);
-    lv_obj_align(cloud_side, LV_ALIGN_TOP_RIGHT, -10, 29);
+    lv_obj_align(cloud_side, LV_ALIGN_TOP_RIGHT, -3, 10);
 
     auto* land_dark = lv_obj_create(profile_avatar_sphere_);
     lv_obj_set_size(land_dark, LV_PCT(62), LV_PCT(48));
@@ -949,7 +1006,7 @@ void Ds02HomeDisplay::CreateProfileObjects() {
     lv_obj_set_style_radius(land_dark, 999, 0);
     lv_obj_set_style_bg_color(land_dark, Color(0x073521), 0);
     lv_obj_set_style_bg_opa(land_dark, LV_OPA_80, 0);
-    lv_obj_align(land_dark, LV_ALIGN_BOTTOM_RIGHT, -2, -12);
+    lv_obj_align(land_dark, LV_ALIGN_BOTTOM_RIGHT, -1, -4);
 
     auto* land_light = lv_obj_create(profile_avatar_sphere_);
     lv_obj_set_size(land_light, LV_PCT(42), LV_PCT(18));
@@ -957,7 +1014,7 @@ void Ds02HomeDisplay::CreateProfileObjects() {
     lv_obj_set_style_radius(land_light, 999, 0);
     lv_obj_set_style_bg_color(land_light, Color(0xc5ee78), 0);
     lv_obj_set_style_bg_opa(land_light, LV_OPA_70, 0);
-    lv_obj_align(land_light, LV_ALIGN_BOTTOM_LEFT, 2, -16);
+    lv_obj_align(land_light, LV_ALIGN_BOTTOM_LEFT, 1, -5);
 
     auto* highlight = lv_obj_create(profile_avatar_sphere_);
     lv_obj_set_size(highlight, LV_PCT(36), LV_PCT(16));
@@ -965,7 +1022,23 @@ void Ds02HomeDisplay::CreateProfileObjects() {
     lv_obj_set_style_radius(highlight, 999, 0);
     lv_obj_set_style_bg_color(highlight, Color(0xffffff), 0);
     lv_obj_set_style_bg_opa(highlight, LV_OPA_70, 0);
-    lv_obj_align(highlight, LV_ALIGN_TOP_LEFT, 27, 10);
+    lv_obj_align(highlight, LV_ALIGN_TOP_LEFT, 9, 3);
+
+    auto* translate_left_hit = lv_obj_create(profile_avatar_root_);
+    lv_obj_set_size(translate_left_hit, safe_width / 2, content_height);
+    ClearBoxStyle(translate_left_hit);
+    lv_obj_set_style_bg_opa(translate_left_hit, LV_OPA_TRANSP, 0);
+    lv_obj_add_flag(translate_left_hit, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_event_cb(translate_left_hit, OnTranslateLeftClicked, LV_EVENT_CLICKED, this);
+    lv_obj_align(translate_left_hit, LV_ALIGN_LEFT_MID, 0, 0);
+
+    auto* translate_right_hit = lv_obj_create(profile_avatar_root_);
+    lv_obj_set_size(translate_right_hit, safe_width - safe_width / 2, content_height);
+    ClearBoxStyle(translate_right_hit);
+    lv_obj_set_style_bg_opa(translate_right_hit, LV_OPA_TRANSP, 0);
+    lv_obj_add_flag(translate_right_hit, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_event_cb(translate_right_hit, OnTranslateRightClicked, LV_EVENT_CLICKED, this);
+    lv_obj_align(translate_right_hit, LV_ALIGN_RIGHT_MID, 0, 0);
 }
 
 void Ds02HomeDisplay::CreateSettingsObjects() {
@@ -1140,6 +1213,39 @@ void Ds02HomeDisplay::CreateSettingsObjects() {
     lv_obj_set_style_text_font(settings_text_color_value_label_, &BUILTIN_TEXT_FONT, 0);
     lv_label_set_long_mode(settings_text_color_value_label_, LV_LABEL_LONG_DOT);
     lv_obj_align(settings_text_color_value_label_, LV_ALIGN_RIGHT_MID, -10, 0);
+
+    auto* translate_row = lv_obj_create(settings_root_);
+    lv_obj_set_size(translate_row, row_width, 28);
+    ClearBoxStyle(translate_row);
+    lv_obj_set_style_radius(translate_row, 8, 0);
+    lv_obj_set_style_bg_color(translate_row, Color(0x111827), 0);
+    lv_obj_set_style_bg_opa(translate_row, LV_OPA_COVER, 0);
+    lv_obj_set_style_border_width(translate_row, 1, 0);
+    lv_obj_set_style_border_color(translate_row, Color(0x273241), 0);
+    lv_obj_add_flag(translate_row, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_event_cb(translate_row, OnSettingsTranslateClicked, LV_EVENT_CLICKED, this);
+    lv_obj_align(translate_row, LV_ALIGN_TOP_MID, 0, 252);
+
+    auto* translate_title = lv_label_create(translate_row);
+    lv_obj_set_style_text_color(translate_title, Color(0xf8fafc), 0);
+    lv_obj_set_style_text_font(translate_title, &BUILTIN_TEXT_FONT, 0);
+    lv_label_set_text(translate_title, "Translate");
+    lv_obj_align(translate_title, LV_ALIGN_LEFT_MID, 10, 0);
+
+    settings_translate_value_label_ = lv_label_create(translate_row);
+    lv_obj_set_width(settings_translate_value_label_, row_width - 126);
+    lv_obj_set_style_text_align(settings_translate_value_label_, LV_TEXT_ALIGN_RIGHT, 0);
+    lv_obj_set_style_text_color(settings_translate_value_label_, Color(0x67e8f9), 0);
+    lv_obj_set_style_text_font(settings_translate_value_label_, &BUILTIN_TEXT_FONT, 0);
+    lv_label_set_long_mode(settings_translate_value_label_, LV_LABEL_LONG_DOT);
+    lv_label_set_text(settings_translate_value_label_, TranslateModeLabel());
+    lv_obj_align(settings_translate_value_label_, LV_ALIGN_RIGHT_MID, -24, 0);
+
+    auto* translate_chevron = lv_label_create(translate_row);
+    lv_obj_set_style_text_color(translate_chevron, Color(0x93a4b8), 0);
+    lv_obj_set_style_text_font(translate_chevron, &BUILTIN_TEXT_FONT, 0);
+    lv_label_set_text(translate_chevron, ">");
+    lv_obj_align(translate_chevron, LV_ALIGN_RIGHT_MID, -10, 0);
 
     CreateDevicePickerObjects(root_, g_wifi_device_picker, "Wi-Fi networks",
                               kWifiDeviceItems.data(), kWifiDeviceItems.size(),
@@ -1417,7 +1523,7 @@ void Ds02HomeDisplay::CreateDockObjects() {
         auto* icon = lv_label_create(button);
         dock_icon_labels_[i] = icon;
         lv_obj_set_style_text_align(icon, LV_TEXT_ALIGN_CENTER, 0);
-        lv_obj_set_style_text_font(icon, kDockUsesIconFont ? &BUILTIN_ICON_FONT : &BUILTIN_TEXT_FONT, 0);
+        lv_obj_set_style_text_font(icon, kDockItems[i].use_icon_font ? &BUILTIN_ICON_FONT : &BUILTIN_TEXT_FONT, 0);
         lv_label_set_text(icon, kDockItems[i].icon);
         lv_obj_center(icon);
     }
@@ -1777,9 +1883,16 @@ void Ds02HomeDisplay::RefreshSettingsPage() {
     char color_text[10];
     std::snprintf(color_text, sizeof(color_text), "#%06lX", static_cast<unsigned long>(text_color_ & 0xffffff));
     SetCachedText(settings_text_color_value_label_, cached_settings_text_color_, color_text);
+    SetCachedText(settings_translate_value_label_, cached_settings_translate_, TranslateModeLabel());
+    RefreshTranslateLabels();
     RefreshDevicePicker(g_wifi_device_picker);
     RefreshDevicePicker(g_bluetooth_device_picker);
     RefreshWakeSoundPicker();
+}
+
+void Ds02HomeDisplay::RefreshTranslateLabels() {
+    SetCachedText(translate_left_label_, cached_translate_left_, TranslateLeftLanguage());
+    SetCachedText(translate_right_label_, cached_translate_right_, TranslateRightLanguage());
 }
 
 void Ds02HomeDisplay::RefreshWakeSoundPicker() {
@@ -2094,6 +2207,13 @@ void Ds02HomeDisplay::ApplyThemeColors(Theme* theme) {
     if (profile_avatar_root_ != nullptr) {
         lv_obj_set_style_bg_color(profile_avatar_root_, screen_background, 0);
     }
+    const lv_color_t translate_label_color = light ? Color(0x0f172a) : Color(0xe5faff);
+    if (translate_left_label_ != nullptr) {
+        lv_obj_set_style_text_color(translate_left_label_, translate_label_color, 0);
+    }
+    if (translate_right_label_ != nullptr) {
+        lv_obj_set_style_text_color(translate_right_label_, translate_label_color, 0);
+    }
     if (settings_root_ != nullptr) {
         lv_obj_set_style_bg_color(settings_root_, light ? Color(0xf4f6fb) : Color(0x050609), 0);
     }
@@ -2144,6 +2264,13 @@ void Ds02HomeDisplay::ApplyTextColor() {
     if (launcher_body_label_ != nullptr) {
         lv_obj_set_style_text_color(launcher_body_label_, muted, 0);
     }
+    const lv_color_t translate_label_color = IsLightTheme(current_theme_) ? Color(0x0f172a) : Color(0xe5faff);
+    if (translate_left_label_ != nullptr) {
+        lv_obj_set_style_text_color(translate_left_label_, translate_label_color, 0);
+    }
+    if (translate_right_label_ != nullptr) {
+        lv_obj_set_style_text_color(translate_right_label_, translate_label_color, 0);
+    }
     if (background_counter_label_ != nullptr) {
         lv_obj_set_style_text_color(background_counter_label_, faint, 0);
     }
@@ -2171,6 +2298,39 @@ void Ds02HomeDisplay::ApplyTextColorToObjectTree(lv_obj_t* obj, lv_color_t color
     for (uint32_t i = 0; i < child_count; ++i) {
         ApplyTextColorToObjectTree(lv_obj_get_child(obj, i), color);
     }
+}
+
+const char* Ds02HomeDisplay::TranslateModeLabel() const {
+    const int index = Clamp(translate_mode_index_, 0, static_cast<int>(kTranslateModeItems.size()) - 1);
+    return kTranslateModeItems[index].label;
+}
+
+const char* Ds02HomeDisplay::TranslateLeftLanguage() const {
+    const int index = Clamp(translate_mode_index_, 0, static_cast<int>(kTranslateModeItems.size()) - 1);
+    return kTranslateModeItems[index].left_language;
+}
+
+const char* Ds02HomeDisplay::TranslateRightLanguage() const {
+    const int index = Clamp(translate_mode_index_, 0, static_cast<int>(kTranslateModeItems.size()) - 1);
+    return kTranslateModeItems[index].right_language;
+}
+
+void Ds02HomeDisplay::MoveTranslateOrb(int side) {
+    translate_orb_side_ = Clamp(side, -1, 1);
+    ApplyProfileAvatarPulse(profile_avatar_pulse_);
+}
+
+void Ds02HomeDisplay::ToggleTranslateMode() {
+    translate_mode_index_ =
+        (translate_mode_index_ + 1) % static_cast<int>(kTranslateModeItems.size());
+    translate_orb_side_ = 0;
+
+    Settings settings("display", true);
+    settings.SetInt("ds02_translate_mode", translate_mode_index_);
+
+    RefreshSettingsPage();
+    RefreshTranslateLabels();
+    ApplyProfileAvatarPulse(profile_avatar_pulse_);
 }
 
 void Ds02HomeDisplay::SetProfileAvatarSpeaking(bool speaking) {
@@ -2208,13 +2368,15 @@ void Ds02HomeDisplay::ApplyProfileAvatarPulse(int value) {
     const int bump = profile_avatar_speaking_ ? (profile_avatar_base_size_ * value) / 1200 : 0;
     const int sphere_size = profile_avatar_base_size_ + bump;
     const int rise = profile_avatar_speaking_ ? bump / 2 : 0;
+    const int safe_width = width_ > 0 ? width_ : 320;
+    const int translate_offset = translate_orb_side_ * ((safe_width * 26) / 100);
 
     lv_obj_set_size(profile_avatar_sphere_, sphere_size, sphere_size);
-    lv_obj_align(profile_avatar_sphere_, LV_ALIGN_CENTER, 0, -rise);
+    lv_obj_align(profile_avatar_sphere_, LV_ALIGN_CENTER, translate_offset, -rise);
 
     if (profile_avatar_shadow_ != nullptr) {
         lv_obj_set_size(profile_avatar_shadow_, sphere_size, sphere_size);
-        lv_obj_align(profile_avatar_shadow_, LV_ALIGN_CENTER, 0, -rise / 2);
+        lv_obj_align(profile_avatar_shadow_, LV_ALIGN_CENTER, translate_offset, -rise / 2);
     }
 }
 
@@ -2376,6 +2538,30 @@ void Ds02HomeDisplay::OnSettingsBackgroundClicked(lv_event_t* event) {
         return;
     }
     display->OpenBackgroundGallery();
+}
+
+void Ds02HomeDisplay::OnSettingsTranslateClicked(lv_event_t* event) {
+    auto* display = static_cast<Ds02HomeDisplay*>(lv_event_get_user_data(event));
+    if (display == nullptr) {
+        return;
+    }
+    display->ToggleTranslateMode();
+}
+
+void Ds02HomeDisplay::OnTranslateLeftClicked(lv_event_t* event) {
+    auto* display = static_cast<Ds02HomeDisplay*>(lv_event_get_user_data(event));
+    if (display == nullptr) {
+        return;
+    }
+    display->MoveTranslateOrb(-1);
+}
+
+void Ds02HomeDisplay::OnTranslateRightClicked(lv_event_t* event) {
+    auto* display = static_cast<Ds02HomeDisplay*>(lv_event_get_user_data(event));
+    if (display == nullptr) {
+        return;
+    }
+    display->MoveTranslateOrb(1);
 }
 
 void Ds02HomeDisplay::OnBackgroundGalleryPrevClicked(lv_event_t* event) {
