@@ -10,7 +10,7 @@ namespace WakeSoundSettings {
 constexpr const char* kNamespace = "audio";
 constexpr const char* kKey = "wake_sound";
 constexpr int kDefaultIndex = 0;
-constexpr int kSoundCount = 5;
+constexpr int kSoundCount = 8;
 
 inline int NormalizeIndex(int index) {
     return (index >= 0 && index < kSoundCount) ? index : kDefaultIndex;
@@ -39,7 +39,13 @@ inline const char* Label(int index) {
         case 3:
             return "Exclamation";
         case 4:
-            return "Off";
+            return "Welcome";
+        case 5:
+            return "Activation";
+        case 6:
+            return "Upgrade";
+        case 7:
+            return "Low Battery";
         case 0:
         default:
             return "Popup";
@@ -55,7 +61,13 @@ inline std::string_view Sound(int index) {
         case 3:
             return Lang::Sounds::OGG_EXCLAMATION;
         case 4:
-            return {};
+            return Lang::Sounds::OGG_WELCOME;
+        case 5:
+            return Lang::Sounds::OGG_ACTIVATION;
+        case 6:
+            return Lang::Sounds::OGG_UPGRADE;
+        case 7:
+            return Lang::Sounds::OGG_LOW_BATTERY;
         case 0:
         default:
             return Lang::Sounds::OGG_POPUP;

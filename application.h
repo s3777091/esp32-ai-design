@@ -106,6 +106,13 @@ public:
 
     void Reboot();
     void WakeWordInvoke(const std::string& wake_word);
+    /**
+     * Interpreter tab hook: instantly switch the server-side VI<->ZH
+     * translator mode (no LLM round-trip). Call from the DS-02 tab handler.
+     */
+    void SetInterpreterMode(bool enable);
+    /** Per-second alarm clock driver (fires + rings with the picked ringtone). */
+    void CheckAlarmTick();
     bool UpgradeFirmware(const std::string& url, const std::string& version = "");
     bool CanEnterSleepMode();
     void SendMcpMessage(const std::string& payload);

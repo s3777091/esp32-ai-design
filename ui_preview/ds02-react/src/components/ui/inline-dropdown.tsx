@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, type ReactNode } from "react";
+import { useState, type KeyboardEvent, type ReactNode } from "react";
 import { motion } from "framer-motion";
 import {
   BellRing,
@@ -16,14 +16,19 @@ import {
   WifiOff,
 } from "lucide-react";
 
+import { DS02_WAKE_WORD } from "@/lib/ds02-config";
 import { cn } from "@/lib/utils";
 
 export type Ds02Theme = "light" | "dark";
 
 export interface Ds02SettingsPanelProps {
   offline: boolean;
+  wifiDeviceName: string;
+  onChooseWifiDevice: () => void;
   onToggleWifi: () => void;
   bluetoothAvailable: boolean | null;
+  bluetoothDeviceName: string;
+  onChooseBluetoothDevice: () => void;
   onToggleBluetooth: () => void;
   volume: number;
   onVolumeChange: (value: number) => void;
@@ -31,6 +36,7 @@ export interface Ds02SettingsPanelProps {
   onBrightnessChange: (value: number) => void;
   theme: Ds02Theme;
   onToggleTheme: () => void;
+  wakeWordName: string;
   wakeSoundName: string;
   onChangeWakeSound: () => void;
   backgroundName: string;
@@ -41,8 +47,12 @@ export interface Ds02SettingsPanelProps {
 
 export function Ds02SettingsPanel({
   offline,
+  wifiDeviceName,
+  onChooseWifiDevice,
   onToggleWifi,
   bluetoothAvailable,
+  bluetoothDeviceName,
+  onChooseBluetoothDevice,
   onToggleBluetooth,
   volume,
   onVolumeChange,
@@ -50,6 +60,7 @@ export function Ds02SettingsPanel({
   onBrightnessChange,
   theme,
   onToggleTheme,
+  wakeWordName,
   wakeSoundName,
   onChangeWakeSound,
   backgroundName,
@@ -87,14 +98,18 @@ export function Ds02SettingsPanel({
           icon={offline ? <WifiOff size={15} /> : <Wifi size={15} />}
           iconClassName={offline ? "bg-rose-500" : "bg-sky-500"}
           title="Wi-Fi"
-          detail={offline ? "Disconnected" : "Connected"}
+          detail={offline ? "Disconnected" : wifiDeviceName}
+          onClick={onChooseWifiDevice}
           control={
-            <MiniSwitch
-              theme={theme}
-              checked={!offline}
-              onClick={onToggleWifi}
-              label="Toggle Wi-Fi"
-            />
+            <span className="flex shrink-0 items-center gap-1">
+              <MiniSwitch
+                theme={theme}
+                checked={!offline}
+                onClick={onToggleWifi}
+                label="Toggle Wi-Fi"
+              />
+              <ChevronRight size={13} aria-hidden />
+            </span>
           }
         />
         <SettingRow
@@ -102,14 +117,18 @@ export function Ds02SettingsPanel({
           icon={<Bluetooth size={15} />}
           iconClassName="bg-blue-500"
           title="Bluetooth"
-          detail={bluetoothOn ? "Available" : "Unavailable"}
+          detail={bluetoothOn ? bluetoothDeviceName : "Unavailable"}
+          onClick={onChooseBluetoothDevice}
           control={
-            <MiniSwitch
-              theme={theme}
-              checked={bluetoothOn}
-              onClick={onToggleBluetooth}
-              label="Toggle Bluetooth"
-            />
+            <span className="flex shrink-0 items-center gap-1">
+              <MiniSwitch
+                theme={theme}
+                checked={bluetoothOn}
+                onClick={onToggleBluetooth}
+                label="Toggle Bluetooth"
+              />
+              <ChevronRight size={13} aria-hidden />
+            </span>
           }
         />
       </SettingsGroup>
@@ -162,14 +181,14 @@ export function Ds02SettingsPanel({
           icon={<Mic2 size={15} />}
           iconClassName="bg-cyan-500"
           title="Wake word"
-          detail="hi ekko"
+          detail={wakeWordName}
           value="active"
         />
         <SettingRow
           theme={theme}
           icon={<BellRing size={15} />}
           iconClassName="bg-teal-500"
-          title="Wake sound"
+          title="Ringtone"
           detail={wakeSoundName}
           onClick={onChangeWakeSound}
           value={<ChevronRight size={14} aria-hidden />}
@@ -233,14 +252,26 @@ export const Component = () => {
     "Noto Sans / Aurora",
     "Segoe UI / Sunrise",
   ];
-  const wakeSounds = ["Popup", "Success", "Vibration", "Exclamation", "Off"];
-
+  const wakeSounds = [
+    "Popup",
+    "Success",
+    "Vibration",
+    "Exclamation",
+    "Welcome",
+    "Activation",
+    "Upgrade",
+    "Low Battery",
+  ];
   return (
     <div className="relative h-[220px] w-[320px] overflow-hidden rounded-lg bg-black">
       <Ds02SettingsPanel
         offline={offline}
+        wifiDeviceName="Ekko Home 5G"
+        onChooseWifiDevice={() => setOffline(false)}
         onToggleWifi={() => setOffline((value) => !value)}
         bluetoothAvailable={bluetoothAvailable}
+        bluetoothDeviceName="Ekko Buds"
+        onChooseBluetoothDevice={() => setBluetoothAvailable(true)}
         onToggleBluetooth={() => setBluetoothAvailable((value) => !value)}
         volume={volume}
         onVolumeChange={setVolume}
@@ -248,6 +279,7 @@ export const Component = () => {
         onBrightnessChange={setBrightness}
         theme={theme}
         onToggleTheme={() => setTheme((value) => (value === "light" ? "dark" : "light"))}
+        wakeWordName={DS02_WAKE_WORD}
         wakeSoundName={wakeSounds[wakeSoundIndex]}
         onChangeWakeSound={() =>
           setWakeSoundIndex((value) => (value + 1) % wakeSounds.length)
@@ -306,6 +338,13 @@ function SettingRow({
   onClick?: () => void;
 }) {
   const isLight = theme === "light";
+  const handleKeyDown = (event: KeyboardEvent<HTMLElement>) => {
+    if (!onClick) return;
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      onClick();
+    }
+  };
   const content = (
     <>
       <span
@@ -354,6 +393,25 @@ function SettingRow({
   );
 
   if (onClick) {
+    if (control) {
+      return (
+        <motion.div
+          role="button"
+          tabIndex={0}
+          className={cn(
+            className,
+            isLight ? "hover:bg-slate-50" : "hover:bg-white/[0.06]",
+            "cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300"
+          )}
+          whileTap={{ scale: 0.99 }}
+          onClick={onClick}
+          onKeyDown={handleKeyDown}
+        >
+          {content}
+        </motion.div>
+      );
+    }
+
     return (
       <motion.button
         type="button"
@@ -391,7 +449,10 @@ function MiniSwitch({
       type="button"
       aria-label={label}
       aria-pressed={checked}
-      onClick={onClick}
+      onClick={(event) => {
+        event.stopPropagation();
+        onClick();
+      }}
       className={cn(
         "relative h-[18px] w-[32px] shrink-0 rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300",
         checked ? "bg-emerald-400" : isLight ? "bg-slate-300" : "bg-white/20"

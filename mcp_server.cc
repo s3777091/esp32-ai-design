@@ -11,6 +11,8 @@
 #include <esp_pthread.h>
 
 #include "application.h"
+#include "alarm_settings.h"
+#include "calendar_marks.h"
 #include "display.h"
 #include "oled_display.h"
 #include "board.h"
@@ -20,7 +22,7 @@
 #include "ds02_home_display.h"
 
 #include <cctype>
-#include <cstdio>
+#include <cstdint>
 #include <cstdlib>
 
 #define TAG "MCP"
@@ -130,14 +132,85 @@ void McpServer::AddCommonTools() {
             return board.GetDeviceStatusJson();
         });
 
-    AddTool("self.audio_speaker.set_volume", 
+    AddTool("self.audio_speaker.set_volume",
         "Set the volume of the audio speaker. If the current volume is unknown, you must call `self.get_device_status` tool first and then call this tool.",
         PropertyList({
             Property("volume", kPropertyTypeInteger, 0, 100)
-        }), 
+        }),
         [&board](const PropertyList& properties) -> ReturnValue {
             auto codec = board.GetAudioCodec();
             codec->SetOutputVolume(properties["volume"].value<int>());
+            return true;
+        });
+
+    AddTool("self.alarm.set",
+        "Set the device alarm clock (báo thức) to ring at the given time (24h). "
+        "One-shot: rings once at the next occurrence of that time, using the ringtone the user picked in settings. "
+        "Use when the user asks to set an alarm, e.g. 'mai đặt báo thức 6 giờ 30' -> hour=6, minute=30.",
+        PropertyList({
+            Property("hour", kPropertyTypeInteger, 0, 23),
+            Property("minute", kPropertyTypeInteger, 0, 59)
+        }),
+        [](const PropertyList& properties) -> ReturnValue {
+            int hour = properties["hour"].value<int>();
+            int minute = properties["minute"].value<int>();
+            AlarmSettings::Set(hour, minute);
+            char buf[64];
+            snprintf(buf, sizeof(buf), "{\"success\":true,\"alarm\":\"%02d:%02d\"}", hour, minute);
+            return std::string(buf);
+        });
+
+    AddTool("self.alarm.get",
+        "Get the current alarm clock status (whether an alarm is armed and at what time).",
+        PropertyList(),
+        [](const PropertyList& properties) -> ReturnValue {
+            int hour = 0, minute = 0;
+            bool enabled = AlarmSettings::Get(hour, minute);
+            char buf[80];
+            snprintf(buf, sizeof(buf), "{\"enabled\":%s,\"time\":\"%02d:%02d\",\"ringing\":%s}",
+                     enabled ? "true" : "false", hour, minute,
+                     AlarmSettings::IsRinging() ? "true" : "false");
+            return std::string(buf);
+        });
+
+    AddTool("self.alarm.cancel",
+        "Cancel the armed alarm clock, and stop it if it is currently ringing. "
+        "Use when the user says 'hủy báo thức' or 'tắt báo thức'.",
+        PropertyList(),
+        [](const PropertyList& properties) -> ReturnValue {
+            AlarmSettings::Cancel();
+            return true;
+        });
+
+    AddTool("self.calendar.set_marks",
+        "Highlight calendar days that carry notes/appointments on the device calendar screen. "
+        "`days` is a comma-separated list of day numbers for that month (empty string clears the month).",
+        PropertyList({
+            Property("year", kPropertyTypeInteger, 2020, 2100),
+            Property("month", kPropertyTypeInteger, 1, 12),
+            Property("days", kPropertyTypeString)
+        }),
+        [](const PropertyList& properties) -> ReturnValue {
+            int year = properties["year"].value<int>();
+            int month = properties["month"].value<int>();
+            auto days = properties["days"].value<std::string>();
+            uint32_t mask = 0;
+            int value = 0;
+            bool has_value = false;
+            for (size_t i = 0; i <= days.size(); ++i) {
+                char c = (i < days.size()) ? days[i] : ',';
+                if (c >= '0' && c <= '9') {
+                    value = value * 10 + (c - '0');
+                    has_value = true;
+                } else if (c == ',' || c == ' ') {
+                    if (has_value && value >= 1 && value <= 31) {
+                        mask |= (1u << (value - 1));
+                    }
+                    value = 0;
+                    has_value = false;
+                }
+            }
+            CalendarMarks::SetMarks(year, month, mask);
             return true;
         });
     

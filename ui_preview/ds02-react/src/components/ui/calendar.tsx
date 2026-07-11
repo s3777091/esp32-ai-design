@@ -5,15 +5,25 @@ import React from "react";
 import { cn } from "@/lib/utils";
 
 const dayNames = ["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"];
+type CalendarTheme = "light" | "dark";
 
 interface CalendarDayProps {
   day: string | number;
   isHeader?: boolean;
   isToday?: boolean;
   compact?: boolean;
+  theme?: CalendarTheme;
 }
 
-const CalendarDay: React.FC<CalendarDayProps> = ({ day, isHeader, isToday, compact }) => {
+const CalendarDay: React.FC<CalendarDayProps> = ({
+  day,
+  isHeader,
+  isToday,
+  compact,
+  theme = "dark",
+}) => {
+  const isLight = theme === "light";
+
   return (
     <div
       className={cn(
@@ -31,7 +41,10 @@ const CalendarDay: React.FC<CalendarDayProps> = ({ day, isHeader, isToday, compa
             : compact
               ? "flex h-6 w-7 items-center justify-center rounded-lg text-[11px]"
               : "flex h-9 w-10 items-center justify-center rounded-xl text-sm",
-          isToday && "bg-white text-black"
+          isHeader
+            ? isLight ? "text-slate-950" : "text-white"
+            : isLight ? "text-slate-950" : "text-white",
+          isToday && (isLight ? "bg-slate-200 text-slate-950" : "bg-white/15 text-white")
         )}
       >
         {day}
@@ -44,13 +57,16 @@ interface CalendarProps {
   compact?: boolean;
   className?: string;
   headerAction?: React.ReactNode;
+  theme?: CalendarTheme;
 }
 
 export function Calendar({
   compact = false,
   className,
   headerAction,
+  theme = "dark",
 }: CalendarProps = {}) {
+  const isLight = theme === "light";
   const currentDate = new Date();
   const currentMonth = currentDate.toLocaleString("default", { month: "long" });
   const currentYear = currentDate.getFullYear();
@@ -66,7 +82,7 @@ export function Calendar({
   const renderCalendarDays = () => {
     let days: React.ReactNode[] = [
       ...dayNames.map((day) => (
-        <CalendarDay key={`header-${day}`} day={day} isHeader compact={compact} />
+        <CalendarDay key={`header-${day}`} day={day} isHeader compact={compact} theme={theme} />
       )),
       ...Array(firstDayOfWeek).map((_, i) => (
         <div
@@ -85,6 +101,7 @@ export function Calendar({
             day={i + 1}
             isToday={i + 1 === today}
             compact={compact}
+            theme={theme}
           />
         )),
     ];
@@ -102,7 +119,12 @@ export function Calendar({
     >
       <div>
         <div className="flex items-center justify-between gap-2">
-          <p className={cn(compact ? "text-[13px] leading-4" : "text-base")}>
+          <p
+            className={cn(
+              compact ? "text-[13px] leading-4" : "text-base",
+              isLight ? "text-slate-950" : "text-white"
+            )}
+          >
             <span className="font-medium">
               {currentMonth}, {currentYear}
             </span>

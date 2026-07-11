@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Check, ChevronLeft, ChevronRight, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -9,6 +9,7 @@ import {
   type Ds02SettingsPanelProps,
 } from "@/components/ui/inline-dropdown";
 import TiltedDock from "@/components/ui/tilted-dock";
+import { DS02_WAKE_WORD } from "@/lib/ds02-config";
 import "./ds02.css";
 
 type ScreenState = "dim" | "awake" | "black";
@@ -110,7 +111,75 @@ const BACKGROUNDS = [
 
 type BackgroundOption = (typeof BACKGROUNDS)[number];
 
-const WAKE_SOUNDS = ["Popup", "Success", "Vibration", "Exclamation", "Off"] as const;
+const LEGACY_WAKE_SOUNDS = [
+  "Popup",
+  "Success",
+  "Vibration",
+  "Exclamation",
+  "Welcome",
+  "Activation",
+  "Upgrade",
+  "Low Battery",
+] as const;
+
+type RingtoneOption = {
+  key: string;
+  label: string;
+  url: string;
+};
+
+type DeviceOption = {
+  key: string;
+  label: string;
+  detail: string;
+};
+
+const WIFI_DEVICE_OPTIONS: readonly DeviceOption[] = [
+  { key: "ekko-home-5g", label: "Ekko Home 5G", detail: "Strong signal" },
+  { key: "studio-router", label: "Studio Router", detail: "Secured" },
+  { key: "office-mesh", label: "Office Mesh", detail: "Saved network" },
+  { key: "guest-wifi", label: "Guest Wi-Fi", detail: "Open network" },
+];
+
+const BLUETOOTH_DEVICE_OPTIONS: readonly DeviceOption[] = [
+  { key: "ekko-buds", label: "Ekko Buds", detail: "Audio available" },
+  { key: "ds02-speaker", label: "DS-02 Speaker", detail: "Nearby" },
+  { key: "car-kit", label: "Car Kit", detail: "Previously paired" },
+  { key: "dev-keyboard", label: "Dev Keyboard", detail: "Input device" },
+];
+
+const RINGTONE_AUDIO_MODULES = import.meta.glob<string>(
+  "../../../../../ringtone/*.mp3",
+  {
+    eager: true,
+    query: "?url",
+    import: "default",
+  }
+);
+
+function ringtoneLabelFromPath(path: string) {
+  const fileName = path.split(/[\\/]/).pop() ?? path;
+  return fileName.replace(/\.[^.]+$/, "").replace(/[_-]+/g, " ");
+}
+
+const RINGTONE_OPTIONS: readonly RingtoneOption[] = Object.entries(
+  RINGTONE_AUDIO_MODULES
+)
+  .map(([path, url]) => ({
+    key: path,
+    label: ringtoneLabelFromPath(path),
+    url,
+  }))
+  .sort((a, b) => a.label.localeCompare(b.label, "vi"));
+
+const WAKE_SOUNDS: readonly RingtoneOption[] =
+  RINGTONE_OPTIONS.length > 0
+    ? RINGTONE_OPTIONS
+    : LEGACY_WAKE_SOUNDS.map((label, index) => ({
+        key: `legacy-${index}`,
+        label,
+        url: "",
+      }));
 
 const TEXT_FONTS = [
   {
@@ -239,15 +308,26 @@ export function Ds02Preview() {
   const [batteryCharging, setBatteryCharging] = useState(false);
   const [lowBatteryNoticeVisible, setLowBatteryNoticeVisible] = useState(false);
   const [btAvailable, setBtAvailable] = useState<boolean | null>(null);
+  const [wifiDeviceIndex, setWifiDeviceIndex] = useState(0);
+  const [bluetoothDeviceIndex, setBluetoothDeviceIndex] = useState(0);
+  const [devicePicker, setDevicePicker] = useState<"wifi" | "bluetooth" | null>(
+    null
+  );
   const [previewVolume, setPreviewVolume] = useState(70);
   const [previewBrightness, setPreviewBrightness] = useState(75);
   const [previewTheme, setPreviewTheme] = useState<Ds02Theme>("light");
   const [wakeSoundIndex, setWakeSoundIndex] = useState(0);
+  const [wakeSoundPickerOpen, setWakeSoundPickerOpen] = useState(false);
+  const [previewingWakeSoundKey, setPreviewingWakeSoundKey] = useState<string | null>(
+    null
+  );
   const [backgroundIndex, setBackgroundIndex] = useState(0);
   const [backgroundGalleryOpen, setBackgroundGalleryOpen] = useState(false);
   const [textFontIndex, setTextFontIndex] = useState(0);
   const [textPaintIndex, setTextPaintIndex] = useState(0);
   const [textStyleOpen, setTextStyleOpen] = useState(false);
+  const ringtoneAudioRef = useRef<HTMLAudioElement | null>(null);
+  const ringtonePreviewTimerRef = useRef<number | null>(null);
 
   // Clock.
   useEffect(() => {
@@ -344,10 +424,32 @@ export function Ds02Preview() {
     return () => window.clearTimeout(id);
   }, [lowBatteryNoticeVisible]);
 
+  useEffect(() => {
+    if (ringtoneAudioRef.current) {
+      ringtoneAudioRef.current.volume = previewVolume / 100;
+    }
+  }, [previewVolume]);
+
+  useEffect(() => {
+    return () => {
+      if (ringtonePreviewTimerRef.current !== null) {
+        window.clearTimeout(ringtonePreviewTimerRef.current);
+      }
+      if (ringtoneAudioRef.current) {
+        ringtoneAudioRef.current.pause();
+        ringtoneAudioRef.current.src = "";
+      }
+    };
+  }, []);
+
   const state = STATES[stateIndex];
   const showDock = state.key === "black";
   const textFont = TEXT_FONTS[textFontIndex] ?? TEXT_FONTS[0];
   const textPaint = TEXT_PAINTS[textPaintIndex] ?? TEXT_PAINTS[0];
+  const wakeSound = WAKE_SOUNDS[wakeSoundIndex] ?? WAKE_SOUNDS[0];
+  const wifiDevice = WIFI_DEVICE_OPTIONS[wifiDeviceIndex] ?? WIFI_DEVICE_OPTIONS[0];
+  const bluetoothDevice =
+    BLUETOOTH_DEVICE_OPTIONS[bluetoothDeviceIndex] ?? BLUETOOTH_DEVICE_OPTIONS[0];
   const [activeTab, setActiveTab] = useState(1); // 1 = Home
   const pressBoot = () => setStateIndex((i) => (i + 1) % STATES.length);
   const togglePreviewWifi = () => setOffline((value) => !value);
@@ -360,13 +462,81 @@ export function Ds02Preview() {
   const updatePreviewBrightness = (value: number) => {
     setPreviewBrightness(clampBrightness(value));
   };
+  const openWakeSoundPicker = () => {
+    setDevicePicker(null);
+    setBackgroundGalleryOpen(false);
+    setTextStyleOpen(false);
+    setWakeSoundPickerOpen(true);
+  };
+  const stopWakeSoundPreview = () => {
+    if (ringtonePreviewTimerRef.current !== null) {
+      window.clearTimeout(ringtonePreviewTimerRef.current);
+      ringtonePreviewTimerRef.current = null;
+    }
+    if (ringtoneAudioRef.current) {
+      ringtoneAudioRef.current.pause();
+      ringtoneAudioRef.current.currentTime = 0;
+    }
+    setPreviewingWakeSoundKey(null);
+  };
+  const previewWakeSound = (sound: RingtoneOption) => {
+    if (!sound.url) return;
+
+    if (ringtonePreviewTimerRef.current !== null) {
+      window.clearTimeout(ringtonePreviewTimerRef.current);
+      ringtonePreviewTimerRef.current = null;
+    }
+
+    const audio = ringtoneAudioRef.current ?? new Audio();
+    ringtoneAudioRef.current = audio;
+    audio.pause();
+    audio.preload = "metadata";
+    audio.volume = previewVolume / 100;
+    audio.onended = () => setPreviewingWakeSoundKey(null);
+    audio.onerror = () => setPreviewingWakeSoundKey(null);
+
+    if (audio.dataset.ringtoneKey !== sound.key) {
+      audio.src = sound.url;
+      audio.dataset.ringtoneKey = sound.key;
+      audio.load();
+    }
+
+    audio.currentTime = 0;
+    setPreviewingWakeSoundKey(sound.key);
+    void audio.play().catch(() => setPreviewingWakeSoundKey(null));
+
+    ringtonePreviewTimerRef.current = window.setTimeout(() => {
+      if (ringtoneAudioRef.current === audio) {
+        audio.pause();
+        setPreviewingWakeSoundKey(null);
+      }
+    }, 8000);
+  };
+  const closeWakeSoundPicker = () => {
+    stopWakeSoundPreview();
+    setWakeSoundPickerOpen(false);
+  };
+  const selectWakeSound = (index: number) => {
+    const sound = WAKE_SOUNDS[index];
+    if (!sound) return;
+    setWakeSoundIndex(index);
+    previewWakeSound(sound);
+  };
   const openBackgroundGallery = () => {
+    stopWakeSoundPreview();
+    setDevicePicker(null);
+    setWakeSoundPickerOpen(false);
+    setTextStyleOpen(false);
     setBackgroundGalleryOpen(true);
   };
   const closeBackgroundGallery = () => {
     setBackgroundGalleryOpen(false);
   };
   const openTextStyle = () => {
+    stopWakeSoundPreview();
+    setDevicePicker(null);
+    setWakeSoundPickerOpen(false);
+    setBackgroundGalleryOpen(false);
     setTextStyleOpen(true);
   };
   const closeTextStyle = () => {
@@ -376,6 +546,24 @@ export function Ds02Preview() {
     setBackgroundIndex(
       (value) => (value + direction + BACKGROUNDS.length) % BACKGROUNDS.length
     );
+  };
+  const openDevicePicker = (kind: "wifi" | "bluetooth") => {
+    stopWakeSoundPreview();
+    setWakeSoundPickerOpen(false);
+    setBackgroundGalleryOpen(false);
+    setTextStyleOpen(false);
+    setDevicePicker(kind);
+  };
+  const closeDevicePicker = () => setDevicePicker(null);
+  const selectDevice = (kind: "wifi" | "bluetooth", index: number) => {
+    if (kind === "wifi") {
+      setWifiDeviceIndex(index);
+      setOffline(false);
+    } else {
+      setBluetoothDeviceIndex(index);
+      setBtAvailable(true);
+    }
+    setDevicePicker(null);
   };
   const forceLowBattery = () => {
     setBatteryLevel(0.1);
@@ -453,8 +641,12 @@ export function Ds02Preview() {
                   onSelect={setActiveTab}
                   settings={{
                     offline,
+                    wifiDeviceName: wifiDevice.label,
+                    onChooseWifiDevice: () => openDevicePicker("wifi"),
                     onToggleWifi: togglePreviewWifi,
                     bluetoothAvailable: btAvailable,
+                    bluetoothDeviceName: bluetoothDevice.label,
+                    onChooseBluetoothDevice: () => openDevicePicker("bluetooth"),
                     onToggleBluetooth: togglePreviewBluetooth,
                     volume: previewVolume,
                     onVolumeChange: setPreviewVolume,
@@ -462,9 +654,9 @@ export function Ds02Preview() {
                     onBrightnessChange: updatePreviewBrightness,
                     theme: previewTheme,
                     onToggleTheme: togglePreviewTheme,
-                    wakeSoundName: WAKE_SOUNDS[wakeSoundIndex],
-                    onChangeWakeSound: () =>
-                      setWakeSoundIndex((value) => (value + 1) % WAKE_SOUNDS.length),
+                    wakeWordName: DS02_WAKE_WORD,
+                    wakeSoundName: wakeSound?.label ?? "Ringtone",
+                    onChangeWakeSound: openWakeSoundPicker,
                     backgroundName: BACKGROUNDS[backgroundIndex].label,
                     onChangeBackground: openBackgroundGallery,
                     textStyleName: `${textFont.label} / ${textPaint.label}`,
@@ -473,6 +665,34 @@ export function Ds02Preview() {
                 />
               )}
             </div>
+
+            {wakeSoundPickerOpen && (
+              <WakeSoundModal
+                sounds={WAKE_SOUNDS}
+                currentIndex={wakeSoundIndex}
+                previewingKey={previewingWakeSoundKey}
+                onSelect={selectWakeSound}
+                onClose={closeWakeSoundPicker}
+              />
+            )}
+
+            {devicePicker !== null && (
+              <DevicePickerModal
+                title={
+                  devicePicker === "wifi" ? "Wi-Fi networks" : "Bluetooth devices"
+                }
+                options={
+                  devicePicker === "wifi"
+                    ? WIFI_DEVICE_OPTIONS
+                    : BLUETOOTH_DEVICE_OPTIONS
+                }
+                currentIndex={
+                  devicePicker === "wifi" ? wifiDeviceIndex : bluetoothDeviceIndex
+                }
+                onSelect={(index) => selectDevice(devicePicker, index)}
+                onClose={closeDevicePicker}
+              />
+            )}
 
             {backgroundGalleryOpen && (
               <BackgroundGalleryModal
@@ -496,6 +716,7 @@ export function Ds02Preview() {
             )}
 
             <SystemStatusBar
+              theme={previewTheme}
               offline={offline}
               batteryLevel={batteryLevel}
               batteryCharging={batteryCharging}
@@ -563,6 +784,145 @@ export function Ds02Preview() {
         </div>
       </section>
     </main>
+  );
+}
+
+function WakeSoundModal({
+  sounds,
+  currentIndex,
+  previewingKey,
+  onSelect,
+  onClose,
+}: {
+  sounds: readonly RingtoneOption[];
+  currentIndex: number;
+  previewingKey: string | null;
+  onSelect: (index: number) => void;
+  onClose: () => void;
+}) {
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-label="Ringtone"
+      className="absolute inset-0 z-[70] grid place-items-center bg-black/70 px-3 backdrop-blur-[2px]"
+      onClick={onClose}
+    >
+      <div
+        className="flex max-h-[calc(100%_-_24px)] w-full max-w-[296px] flex-col overflow-hidden rounded-lg border border-white/[0.15] bg-[#070a10] text-white shadow-[0_18px_44px_rgba(0,0,0,0.62)]"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <div className="flex h-8 shrink-0 items-center justify-between px-2">
+          <div className="min-w-0 text-[11px] font-bold leading-none">
+            Ringtone
+          </div>
+          <button
+            type="button"
+            aria-label="Close ringtone picker"
+            onClick={onClose}
+            className="grid h-6 w-6 place-items-center rounded-md text-white/75 hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300"
+          >
+            <X size={15} aria-hidden />
+          </button>
+        </div>
+
+        <div className="ds02-style-list min-h-0 flex-1 overflow-y-auto overscroll-contain px-2 pb-2 touch-pan-y">
+          {sounds.map((sound, index) => {
+            const selected = index === currentIndex;
+            const previewing = sound.key === previewingKey;
+            return (
+              <button
+                key={sound.key}
+                type="button"
+                aria-pressed={selected}
+                onClick={() => onSelect(index)}
+                className={`ds02-ringtone-row${selected ? " is-selected" : ""}${
+                  previewing ? " is-previewing" : ""
+                }`}
+              >
+                <span className="ds02-ringtone-name">{sound.label}</span>
+                {previewing && (
+                  <span className="ds02-ringtone-meter" aria-hidden>
+                    <span />
+                    <span />
+                    <span />
+                  </span>
+                )}
+                {selected && (
+                  <Check size={13} className="ds02-ringtone-check" aria-hidden />
+                )}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function DevicePickerModal({
+  title,
+  options,
+  currentIndex,
+  onSelect,
+  onClose,
+}: {
+  title: string;
+  options: readonly DeviceOption[];
+  currentIndex: number;
+  onSelect: (index: number) => void;
+  onClose: () => void;
+}) {
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-label={title}
+      className="absolute inset-0 z-[70] grid place-items-center bg-black/70 px-3 backdrop-blur-[2px]"
+      onClick={onClose}
+    >
+      <div
+        className="flex max-h-[calc(100%_-_24px)] w-full max-w-[296px] flex-col overflow-hidden rounded-lg border border-white/[0.15] bg-[#070a10] text-white shadow-[0_18px_44px_rgba(0,0,0,0.62)]"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <div className="flex h-8 shrink-0 items-center justify-between px-2">
+          <div className="min-w-0 text-[11px] font-bold leading-none">
+            {title}
+          </div>
+          <button
+            type="button"
+            aria-label={`Close ${title}`}
+            onClick={onClose}
+            className="grid h-6 w-6 place-items-center rounded-md text-white/75 hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300"
+          >
+            <X size={15} aria-hidden />
+          </button>
+        </div>
+
+        <div className="ds02-style-list min-h-0 flex-1 overflow-y-auto overscroll-contain px-2 pb-2 touch-pan-y">
+          {options.map((option, index) => {
+            const selected = index === currentIndex;
+            return (
+              <button
+                key={option.key}
+                type="button"
+                aria-pressed={selected}
+                onClick={() => onSelect(index)}
+                className={`ds02-device-row${selected ? " is-selected" : ""}`}
+              >
+                <span className="ds02-device-copy">
+                  <span className="ds02-device-name">{option.label}</span>
+                  <span className="ds02-device-detail">{option.detail}</span>
+                </span>
+                {selected && (
+                  <Check size={13} className="ds02-device-check" aria-hidden />
+                )}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -796,44 +1156,37 @@ function TextStyleModal({
 }
 
 function SystemStatusBar({
+  theme,
   offline,
   batteryLevel,
   batteryCharging,
   btAvailable,
 }: {
+  theme: Ds02Theme;
   offline: boolean;
   batteryLevel: number | null;
   batteryCharging: boolean;
   btAvailable: boolean | null;
 }) {
   const level = batteryLevel ?? 0.99;
-  const batteryTone = getBatteryTone(level, batteryCharging);
-  const wifiTone = offline ? "text-rose-400" : "text-emerald-300";
-  const btTone = btAvailable ? "text-sky-300" : "text-slate-500";
+  const statusTone = theme === "light" ? "text-slate-950" : "text-white";
 
   return (
     <div className="ds02-system-bar" aria-hidden="true">
       <div className="inline-flex items-center gap-1.5 pr-0.5 text-[9px] font-bold leading-none">
-        <span className={wifiTone}>
+        <span className={statusTone}>
           <MiniWifiIcon offline={offline} />
         </span>
-        <span className={btTone}>
+        <span className={statusTone}>
           <MiniBluetoothIcon unavailable={btAvailable !== true} />
         </span>
-        <span className={batteryTone}>{Math.round(level * 100)}</span>
-        <span className={batteryTone}>
-          <MiniBatteryBar level={level} charging={batteryCharging} />
+        <span className={statusTone}>{Math.round(level * 100)}</span>
+        <span className={statusTone}>
+          <MiniBatteryBar level={level} charging={batteryCharging} theme={theme} />
         </span>
       </div>
     </div>
   );
-}
-
-function getBatteryTone(level: number, charging: boolean) {
-  if (charging) return "text-cyan-300";
-  if (level <= 0.15) return "text-rose-400";
-  if (level <= 0.35) return "text-amber-300";
-  return "text-emerald-300";
 }
 
 function LowBatteryPill({
@@ -930,12 +1283,15 @@ function MiniBluetoothIcon({ unavailable }: { unavailable: boolean }) {
 function MiniBatteryBar({
   level,
   charging,
+  theme,
 }: {
   level: number;
   charging: boolean;
+  theme: Ds02Theme;
 }) {
   const pct = Math.max(0, Math.min(1, level));
   const fillWidth = Math.max(1, Math.round(pct * 13));
+  const boltFill = theme === "light" ? "#f4f6fb" : "#020617";
 
   return (
     <svg
@@ -958,7 +1314,7 @@ function MiniBatteryBar({
       {charging && (
         <path
           d="M10.7 2.7L7.8 6.3H10L8.9 9.4L12.2 5.4H10L10.7 2.7Z"
-          fill="#020617"
+          fill={boltFill}
         />
       )}
     </svg>
@@ -973,7 +1329,7 @@ const TAB_PAGES: Record<number, { title: string; body: string }> = {
   1: { title: "Home", body: "" }, // Home renders the real <Calendar /> below.
   2: { title: "Search", body: "Tìm kiếm thiết bị, bài hát, cài đặt…" },
   3: { title: "Alerts", body: "Không có thông báo mới." },
-  4: { title: "Ekko Robot", body: "Wake word: hi ekko" },
+  4: { title: "Ekko Robot", body: `Wake word: ${DS02_WAKE_WORD}` },
   5: { title: "Music", body: "Chưa có bài hát nào đang phát." },
   6: { title: "Settings", body: "Wi-Fi, âm thanh, hiển thị, ngôn ngữ…" },
 };
@@ -1000,11 +1356,11 @@ function DockPage({
           <div
             className="ds02-dock-page"
           >
-            <Calendar compact />
+            <Calendar compact theme={settings.theme} />
           </div>
         ) : isProfile ? (
-          <div className="ds02-dock-page bg-black">
-            <ProfileAvatar3D speaking={false} />
+          <div className="ds02-dock-page">
+            <ProfileAvatar3D speaking={false} theme={settings.theme} />
           </div>
         ) : isSettings ? (
           <div className="ds02-dock-page">
@@ -1013,13 +1369,13 @@ function DockPage({
         ) : (
           <div className="ds02-dock-page grid place-items-center px-6 text-center">
             <div>
-              <div className="text-[10px] uppercase tracking-widest text-white/50">
+              <div className={isLight ? "text-[10px] uppercase tracking-widest text-slate-500" : "text-[10px] uppercase tracking-widest text-white/50"}>
                 Tab #{activeTab}
               </div>
               <div className="text-2xl font-semibold mt-1">
                 {TAB_PAGES[activeTab]?.title}
               </div>
-              <div className="text-xs text-white/70 mt-2 max-w-[220px]">
+              <div className={isLight ? "text-xs text-slate-600 mt-2 max-w-[220px]" : "text-xs text-white/70 mt-2 max-w-[220px]"}>
                 {TAB_PAGES[activeTab]?.body}
               </div>
             </div>
@@ -1032,16 +1388,24 @@ function DockPage({
         variant="inset"
         scale={0.72}
         activeId={activeTab}
+        theme={settings.theme}
         onSelect={onSelect}
       />
     </div>
   );
 }
 
-function ProfileAvatar3D({ speaking }: { speaking: boolean }) {
+function ProfileAvatar3D({
+  speaking,
+  theme,
+}: {
+  speaking: boolean;
+  theme: Ds02Theme;
+}) {
   return (
     <div
       className="profile-avatar-screen"
+      data-theme={theme}
       data-speaking={speaking ? "true" : "false"}
       aria-label="Profile voice avatar"
     >

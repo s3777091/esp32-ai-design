@@ -22,28 +22,56 @@ Kiến trúc: **ESP32-S3 (thin client) → xiaozhi server trên VM (não) → ag
 
 - [x] Xác nhận nền: component `main` của xiaozhi-esp32, ESP32-S3, board đích **ESP-BOX-3**, DS-02 home UI (mặc định bật), wake word "okke", ngôn ngữ mặc định vi_VN
 - [x] Đổi OTA URL mặc định: `api.tenclass.net` → **`https://ai.protexa.cloud/xiaozhi/ota/`** (Kconfig.projbuild)
-- [x] Scaffold build: `firmware-project/` (overlay sdkconfig ESP-BOX-3 + script `build-on-vm.sh` build bằng Docker `espressif/idf:release-v5.5` trên VM)
+- [x] **Repo tự build được, không cần clone upstream** (quyết định của chủ repo): vendor `scripts/gen_lang.py` + `scripts/build_default_assets.py` (đã scan: thuần stdlib, không network/exec, đã được duyệt) + wrapper `firmware-project/` (CMakeLists project, partition v2 16MB có `assets`, sdkconfig defaults + overlay ESP-BOX-3, `build-on-vm.sh`)
 - [x] Source đã đưa lên VM tại `/root/fw/ds02-src`
 
-## 🔄 Đang chờ
+## 🔄 Build firmware trên VM (Docker `espressif/idf:release-v5.5`, `/root/fw/ds02-project`)
 
-- [ ] **Build firmware lần đầu trên VM** — cần xác nhận cho phép clone upstream `78/xiaozhi-esp32` làm khung project (script đã sẵn: `/root/fw/ds02-src/firmware-project/build-on-vm.sh /root/fw/ds02-src`)
-- [ ] Sửa lỗi build nếu có (lệch version script upstream ↔ component, model wake word "okke" trong assets)
+Các lỗi đã sửa qua từng vòng build:
+- [x] Thiếu model MultiNet cho wake word "okke" → bật `CONFIG_SR_MN_EN_MULTINET7_QUANT` (mn7_en); assets.bin 10MB sinh OK (kèm srmodels + font)
+- [x] LVGL thiếu `LV_USE_IMGFONT` → áp nguyên bộ 57 config chuẩn upstream vào `firmware-project/sdkconfig.defaults` (kèm `BOOTLOADER_APP_ROLLBACK_ENABLE` cho OTA an toàn)
+- [x] `ApplyBackgroundIndex` lệch snapshot code đang sửa dở → đồng bộ lại source mới nhất
+- [x] Race sinh `assets/lang_config.h` → thêm `add_dependencies(${COMPONENT_LIB} lang_header)` vào CMakeLists.txt (fix tận gốc trong repo)
+- [x] `-Werror=format-truncation` ở lịch DS-02 (`ds02_home_display.cc:1303`) → nới buffer `text[4]`→`text[12]`
+- [x] **BUILD THÀNH CÔNG (vòng 7)** — `Successfully created esp32s3 image`. Artifacts tại `firmware-project/artifacts/` (local) và `/root/fw/artifacts-ds02-0.1.0` (VM): ds02.bin 3.4MB + bootloader + partition-table + ota_data + assets 10MB
+- [ ] **Flash ESP-BOX-3** (cắm USB, thay COMx):
+      `pip install esptool` rồi chạy trong `firmware-project/artifacts/`:
+      `esptool --chip esp32s3 --port COMx --baud 921600 write_flash --flash_mode dio --flash_freq 80m --flash_size 16MB 0x0 bootloader.bin 0x8000 partition-table.bin 0xd000 ota_data_initial.bin 0x20000 ds02.bin 0x800000 generated_assets.bin`
+- [ ] Sau flash: thiết bị hiện mã 6 số → panel `https://ai.protexa.cloud` → gắn thiết bị vào agent "Vietnamese Assistant" → test giọng nói (wake "okke")
 
 ## 📋 Tiếp theo — Firmware (giai đoạn 2)
 
 - [ ] Flash ESP-BOX-3 + activation: thiết bị gọi OTA → nhập mã 6 số vào panel → bind vào agent "Vietnamese Assistant"
 - [ ] Test giọng nói end-to-end trên thiết bị thật (wake "okke" → hỏi tiếng Việt → nghe trả lời)
-- [ ] **Module báo thức local**: lưu NVS (settings.cc), MCP device tool `self.alarm.set/list/delete` để đặt bằng giọng nói, chuông qua `PlaySound()`, hoạt động cả khi mất mạng
+- [x] **Báo thức bằng giọng nói (luồng hoàn chỉnh)**:
+      - Firmware: [alarm_settings.h](alarm_settings.h) (NVS, one-shot, tự disarm) + `Application::CheckAlarmTick()` chạy mỗi giây — reo bằng **ringtone đã chọn trong picker settings** (WakeSoundSettings), lặp 10 lần cách 3s, wake màn hình + notification, tự tắt khi người dùng tương tác
+      - MCP tools cho LLM: `self.alarm.set(hour,minute)` / `self.alarm.get` / `self.alarm.cancel` ([mcp_server.cc](mcp_server.cc)) → nói *"mai đặt báo thức 6h30"* là LLM tự đặt; *"tắt báo thức"* để hủy
+      - Server: scheduler thêm job **evening_ask@21:30** — mỗi tối thiết bị tự hỏi *"mai đặt báo thức mấy giờ?"*, trả lời là nó gọi self.alarm.set (đổi giờ qua env `EVENING_ASK_TIME`)
+      - Verify: scheduler log `briefing@06:30, evening_ask@21:30` ✅; build firmware vòng 9 đang chạy
 - [ ] **Thẻ thông tin màn hình standby DS-02**: giờ + thời tiết + lịch hôm nay + note đầu ngày (server đẩy qua MCP/websocket)
 
-## 📋 Tiếp theo — Server (giai đoạn 1, làm song song được)
+## ✅ Server — Giai đoạn 1 (deploy 2026-07-10, chờ test giọng nói trên thiết bị thật)
 
-- [ ] **#1 Take note**: plugin `plugins_func` save_note/query_notes (bảng MySQL mới) → LLM gợi ý dựa trên note
-- [ ] **#2 Gợi ý công việc**: bảng tasks + tool add/list/done, cùng pattern #1
-- [ ] **#3 Sắp xếp thời gian**: prompt tổng hợp note+task+lịch (không cần code mới sau #1/#2)
-- [ ] **#7 Phiên dịch Việt↔Trung**: tạo agent "Interpreter" thứ 2 trong panel — Whisper tự nhận vi/zh, LLM dịch, TTS giọng multilingual (nói được cả vi+zh); chuyển vai bằng giọng nói
-- [ ] **Briefing sáng**: cron trên VM → push TTS (thời tiết + lịch + việc hôm nay) xuống thiết bị đang online
+- [x] **#1 Take note**: plugin `save_note`/`query_notes` (custom_plugins/assistant_tools.py, DB MySQL `assistant_data`, user riêng, pass tại `/root/.assistant_db_pass`)
+- [x] **#2 Gợi ý công việc**: `add_task`/`list_tasks`/`complete_task` cùng module
+- [x] **#3 Sắp xếp thời gian**: prompt agent đã dạy cách tổng hợp list_tasks + query_notes → đề xuất ưu tiên kèm mốc giờ
+- [x] **#7 Phiên dịch Việt↔Trung — TAB TRỰC TIẾP trên firmware** (thiết kế lại theo yêu cầu: không đi qua LLM, không nằm trong tool của agent trợ lý):
+      - Server: `custom_plugins/interpreter_mode.py` chặn magic token trong handler `listen/detect` → đổi prompt + giọng multilingual tức thì + đọc xác nhận TTS (không gọi LLM). Log verify: `listen-handler patch installed`
+      - Firmware: đã thêm `Application::SetInterpreterMode(bool enable)` ([application.h](application.h) / [application.cc](application.cc)) — **tab UI của bạn chỉ cần gọi hàm này** khi click (true=bật, false=tắt); nó tự mở channel nếu chưa có và gửi `__INTERPRETER_ON__/__INTERPRETER_OFF__`
+      - 2 tool interpreter đã GỠ khỏi agent "Vietnamese Assistant" (còn 6 mapping); prompt agent đã bỏ mục phiên dịch
+      - Test giả lập: dispatch OK tới ngưỡng auth thiết bị (đúng thiết kế — cần thiết bị đã kích hoạt); E2E cuối test khi flash máy thật
+- [x] **Briefing sáng (bản voice-triggered)**: tool `morning_briefing` — nói "chào buổi sáng"/"hôm nay có gì" → ngày giờ + việc chờ + note 48h + thời tiết → LLM tổng hợp + gợi ý đồ mang theo
+- [x] Weather đổi default_location → Ho Chi Minh; các function đã đăng ký vào panel (ai_model_provider + ai_agent_plugin_mapping), server nạp plugin OK
+- [x] **Tra cứu internet bằng Lightpanda** (lightpanda.io): service `lightpanda` trong compose (headless browser, RAM ~5MB!, CDP :9222 nội bộ) + plugin `internet_search` (custom_plugins/internet_search.py): DuckDuckGo → render trang qua Lightpanda (chạy JS) → LLM tóm tắt tiếng Việt kèm nguồn. Nói: "<wake word>, tra cứu...", "giá ... hôm nay", "tin tức về...". **Lightpanda là đường duy nhất — KHÔNG fallback HTTP** (quyết định của chủ dự án); nếu Lightpanda chết, AI báo "dịch vụ duyệt web không khả dụng". Test E2E cả 2 kịch bản: giá vàng SJC live ✅ + thời tiết HCM từ thoitiet.vn ✅ + kịch bản lightpanda down báo lỗi đúng ✅. Agent hiện có 7 tool
+- [x] **Briefing sáng TỰ ĐỘNG (push 06:30)**: plugin `custom_plugins/auto_briefing.py` — scheduler chạy trong process server, theo dõi connection thiết bị, đúng giờ tự bơm `startToChat("Chào buổi sáng...")` → thiết bị tự đọc bản tin. **Đã test bắn đúng giờ** (log `fire time reached`); giờ chỉnh qua env `BRIEFING_TIME` trong docker-compose.protexa.yml. Cần thiết bị đang online (giữ websocket) lúc 06:30
+
+## ✅ Trợ lý thông minh kiểu Việt Nam + Lịch hẹn (2026-07-11)
+
+- [x] **Hồ sơ cá nhân trong agent**: tên (anh Đạt), AI engineer @ AvePoint 8h30-17h30 T2-T6, SĐT — agent xưng "em", biết chủ nhân bận giờ hành chính
+- [x] **Trí khôn bối cảnh VN** (system prompt): cơ quan hành chính nghỉ T7/CN, nghỉ trưa 12h-13h, lịch trùng giờ làm thì hỏi lại/đề xuất giờ khác (sáng sớm/sau 17h30/cuối tuần), kiểm tra list_tasks trước khi chốt lịch mới
+- [x] **Luồng lịch hẹn** ("mai tôi đi khám sức khỏe"): save_note → hỏi giờ → add_task với due_at → **tự nhắc trước 30 phút** (job quét mỗi 20s trong scheduler, test round-trip PASS) → đặt được ngày bất kỳ ("20/06 14:00" tự hiểu năm sau nếu đã qua; hỗ trợ "mai/mốt/hôm nay HH:MM")
+- [x] **Lịch UI tô ngày có hẹn**: server đẩy marks qua MCP `self.calendar.set_marks` (khi thêm hẹn + sync mỗi 30'), firmware [calendar_marks.h](calendar_marks.h) + RefreshCalendar tô **tím nhạt 40%** ([ds02_home_display.cc](display/ds02_home_display.cc)) — giữ nguyên màu chữ, ô "today" vẫn ưu tiên
+- [x] **Build11 THÀNH CÔNG** — `ds02.bin` cuối (3.4MB) đã tải về `firmware-project/artifacts/`, chứa đủ: báo thức + tab phiên dịch + lịch tô ngày hẹn + MCP tools (alarm/calendar)
 
 ## 📋 Sau đó — Agent layer (giai đoạn 3)
 

@@ -11,6 +11,7 @@
 #include "assets.h"
 #include "settings.h"
 #include "wake_sound_settings.h"
+#include "alarm_settings.h"
 
 #include <cstring>
 #include <esp_log.h>
@@ -267,7 +268,9 @@ void Application::Run() {
             clock_ticks_++;
             auto display = Board::GetInstance().GetDisplay();
             display->UpdateStatusBar();
-        
+
+            CheckAlarmTick();
+
             // Print debug info every 10 seconds
             if (clock_ticks_ % 10 == 0) {
                 SystemInfo::PrintHeapStats();
@@ -868,7 +871,7 @@ void Application::ContinueWakeWordInvoke(const std::string& wake_word) {
     protocol_->SendWakeWordDetected(wake_word);
     SetListeningMode(GetDefaultListeningMode());
 #else
-    // Set flag to play the configured wake sound after state changes to listening
+    // Set flag to play the configured ringtone after state changes to listening
     // (PlaySound here would be cleared by ResetDecoder in EnableVoiceProcessing)
     play_wake_sound_on_listening_ = true;
     SetListeningMode(GetDefaultListeningMode());
@@ -923,7 +926,7 @@ void Application::HandleStateChangedEvent() {
             audio_service_.EnableWakeWordDetection(false);
 #endif
             
-            // Play the configured wake sound after ResetDecoder (in EnableVoiceProcessing) has been called
+            // Play the configured ringtone after ResetDecoder (in EnableVoiceProcessing) has been called
             if (play_wake_sound_on_listening_) {
                 play_wake_sound_on_listening_ = false;
                 PlayWakeSound();
@@ -1065,12 +1068,57 @@ void Application::WakeWordInvoke(const std::string& wake_word) {
         Schedule([this]() {
             AbortSpeaking(kAbortReasonNone);
         });
-    } else if (state == kDeviceStateListening) {   
+    } else if (state == kDeviceStateListening) {
         Schedule([this]() {
             if (protocol_) {
                 protocol_->CloseAudioChannel();
             }
         });
+    }
+}
+
+void Application::SetInterpreterMode(bool enable) {
+    // Direct server-side switch for the interpreter tab: sends a control token
+    // over the listen/detect channel; the server flips translator mode without
+    // an LLM round-trip and answers with a short TTS confirmation.
+    const std::string token = enable ? "__INTERPRETER_ON__" : "__INTERPRETER_OFF__";
+    Schedule([this, token]() {
+        if (!protocol_) {
+            return;
+        }
+        if (!protocol_->IsAudioChannelOpened()) {
+            SetDeviceState(kDeviceStateConnecting);
+            if (!protocol_->OpenAudioChannel()) {
+                return;
+            }
+        }
+        protocol_->SendWakeWordDetected(token);
+        SetListeningMode(GetDefaultListeningMode());
+    });
+}
+
+void Application::CheckAlarmTick() {
+    if (!has_server_time_) {
+        return; // wall clock not trustworthy until server time arrives
+    }
+    time_t now = time(nullptr);
+    struct tm tm_now;
+    localtime_r(&now, &tm_now);
+
+    if (AlarmSettings::ShouldFire(tm_now)) {
+        ESP_LOGI(TAG, "Alarm fired at %02d:%02d", tm_now.tm_hour, tm_now.tm_min);
+        char text[32];
+        snprintf(text, sizeof(text), "Báo thức %02d:%02d", tm_now.tm_hour, tm_now.tm_min);
+        WakeDs02HomeDisplay("alarm");
+        Board::GetInstance().GetDisplay()->ShowNotification(text, 60000);
+    }
+
+    // Any interaction (wake word, touch starting a chat) silences the ring
+    if (AlarmSettings::IsRinging() && GetDeviceState() != kDeviceStateIdle) {
+        AlarmSettings::StopRinging();
+    }
+    if (AlarmSettings::RingTick()) {
+        PlaySound(WakeSoundSettings::Sound(WakeSoundSettings::LoadIndex()));
     }
 }
 

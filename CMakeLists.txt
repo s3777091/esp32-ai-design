@@ -1033,6 +1033,9 @@ add_custom_command(
 add_custom_target(lang_header ALL
     DEPENDS ${LANG_HEADER}
 )
+# Sources include assets/lang_config.h, so they must wait for generation
+# (without this edge, parallel builds race and fail on a clean tree).
+add_dependencies(${COMPONENT_LIB} lang_header)
 
 # Find ESP-SR component dynamically
 find_component_by_pattern("espressif__esp-sr" ESP_SR_COMPONENT ESP_SR_COMPONENT_PATH)

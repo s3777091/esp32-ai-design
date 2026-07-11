@@ -3,5 +3,8 @@
 CONFIG_BOARD_TYPE_ESP_BOX_3=y
 CONFIG_OTA_URL="https://ai.protexa.cloud/xiaozhi/ota/"
 CONFIG_LANGUAGE_VI_VN=y
-# USE_DS02_HOME_UI defaults to y for ESP-BOX-3 (Kconfig), which also selects
-# the custom wake word "okke". Kept implicit so Kconfig stays the single source.
+CONFIG_USE_CUSTOM_WAKE_WORD=y
+CONFIG_CUSTOM_WAKE_WORD="okke"
+CONFIG_CUSTOM_WAKE_WORD_DISPLAY="okke"
+# Custom wake word needs a MultiNet model packed into assets.
+CONFIG_SR_MN_EN_MULTINET7_QUANT=y

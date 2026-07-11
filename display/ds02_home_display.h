@@ -65,6 +65,7 @@ private:
     static constexpr size_t kWeekdayCount = 7;
     static constexpr size_t kCalendarDayCount = 42;
     static constexpr size_t kBackgroundCount = 20;
+    static constexpr size_t kWakeSoundCount = 8;
 
     void CreateStandbyObjects();
     void CreateLauncherObjects();
@@ -73,6 +74,7 @@ private:
     void CreateCalendarObjects();
     void CreateProfileObjects();
     void CreateSettingsObjects();
+    void CreateWakeSoundPickerObjects();
     void CreateBackgroundGalleryObjects();
     void CreateDockObjects();
     void RefreshHomeData();
@@ -84,18 +86,22 @@ private:
     void UpdateLowBatteryNotification(int level, bool charging, bool discharging);
     void RefreshCalendar(bool force = false);
     void RefreshSettingsPage();
+    void RefreshWakeSoundPicker();
     void RefreshBackgroundGallery();
     void RefreshLauncherPage(bool force = false);
     void ApplyStandbyState();
     void SelectDockItem(size_t index);
     void ApplyDockSelection();
-    void ApplyNextWakeSound();
+    void ApplyWakeSoundIndex(int index);
+    void OpenWakeSoundPicker();
+    void CloseWakeSoundPicker();
     void OpenBackgroundGallery();
     void CloseBackgroundGallery();
     void MoveBackground(int direction);
     bool ApplyBackgroundIndex(size_t index);
     void PersistBackgroundIndex();
     LvglImage* GetBackgroundImage(size_t index);
+    void ApplyThemeColors(Theme* theme);
     void ApplyTextColor();
     void ApplyTextColorToObjectTree(lv_obj_t* obj, lv_color_t color);
     void SetProfileAvatarSpeaking(bool speaking);
@@ -105,6 +111,9 @@ private:
     static void OnProfileAvatarTimer(void* arg);
     static void OnDockButtonClicked(lv_event_t* event);
     static void OnSettingsWakeSoundClicked(lv_event_t* event);
+    static void OnWakeSoundPickerOverlayClicked(lv_event_t* event);
+    static void OnWakeSoundPickerCloseClicked(lv_event_t* event);
+    static void OnWakeSoundOptionClicked(lv_event_t* event);
     static void OnSettingsBackgroundClicked(lv_event_t* event);
     static void OnBackgroundGalleryPrevClicked(lv_event_t* event);
     static void OnBackgroundGalleryNextClicked(lv_event_t* event);
@@ -155,6 +164,9 @@ private:
     lv_obj_t* settings_wake_sound_value_label_ = nullptr;
     lv_obj_t* settings_background_value_label_ = nullptr;
     lv_obj_t* settings_text_color_value_label_ = nullptr;
+    lv_obj_t* wake_sound_picker_overlay_ = nullptr;
+    lv_obj_t* wake_sound_picker_panel_ = nullptr;
+    lv_obj_t* wake_sound_picker_list_ = nullptr;
     lv_obj_t* background_gallery_overlay_ = nullptr;
     lv_obj_t* background_gallery_panel_ = nullptr;
     lv_obj_t* background_preview_box_ = nullptr;
@@ -165,6 +177,9 @@ private:
     std::array<lv_obj_t*, kWeekdayCount> calendar_weekday_labels_ = {};
     std::array<lv_obj_t*, kCalendarDayCount> calendar_day_cells_ = {};
     std::array<lv_obj_t*, kCalendarDayCount> calendar_day_labels_ = {};
+    std::array<lv_obj_t*, kWakeSoundCount> wake_sound_option_rows_ = {};
+    std::array<lv_obj_t*, kWakeSoundCount> wake_sound_option_labels_ = {};
+    std::array<lv_obj_t*, kWakeSoundCount> wake_sound_check_labels_ = {};
     std::array<lv_obj_t*, kDockItemCount> dock_buttons_ = {};
     std::array<lv_obj_t*, kDockItemCount> dock_icon_labels_ = {};
 
@@ -181,6 +196,7 @@ private:
     int calendar_year_ = -1;
     int calendar_month_ = -1;
     int calendar_today_ = -1;
+    int calendar_marks_version_ = -1;
     int profile_avatar_base_size_ = 0;
     int profile_avatar_pulse_ = 0;
     int profile_avatar_pulse_dir_ = 1;
