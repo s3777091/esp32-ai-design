@@ -47,6 +47,7 @@ public:
      * This function returns immediately. Network events are notified through the callback set by SetNetworkEventCallback().
      */
     virtual void StartNetwork() override;
+    virtual bool RequestWifiConfigMode() override;
     
     virtual NetworkInterface* GetNetwork() override;
     virtual void SetNetworkEventCallback(NetworkEventCallback callback) override;

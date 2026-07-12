@@ -39,6 +39,8 @@ public:
     void ShowPureBlack();
     void ShowLauncher();
     void ShowOnboardSplash(int duration_ms = 4500);
+    void ShowWifiConfigPrompt(const char* ssid, const char* password, const char* url) override;
+    void HideWifiConfigPrompt() override;
     void AdvanceStandbyButtonState();
     void WakeFromWakeWord(const char* wake_word = nullptr);
     void SetProfileVoiceActive(bool active);
@@ -62,6 +64,13 @@ private:
         Launcher,
     };
 
+    enum class LauncherView {
+        Home,
+        Drawer,
+        Calendar,
+        App,
+    };
+
     static constexpr size_t kDockItemCount = 6;
     static constexpr size_t kWeekdayCount = 7;
     static constexpr size_t kCalendarDayCount = 42;
@@ -70,6 +79,9 @@ private:
 
     void CreateStandbyObjects();
     void CreateLauncherObjects();
+    void CreateLauncherHomeObjects();
+    void CreateAppDrawerObjects();
+    void CreateAppBackButtonObject();
     void CreateSystemBarObjects();
     void CreateLowBatteryNotificationObjects();
     void CreateCalendarObjects();
@@ -78,6 +90,7 @@ private:
     void CreateWakeSoundPickerObjects();
     void CreateBackgroundGalleryObjects();
     void CreateOnboardSplashObjects();
+    void CreateWifiConfigPromptObjects();
     void CreateDockObjects();
     void RefreshHomeData();
     void RefreshClock();
@@ -92,9 +105,15 @@ private:
     void RefreshWakeSoundPicker();
     void RefreshBackgroundGallery();
     void RefreshLauncherPage(bool force = false);
+    void ApplyAppDrawerStyle();
     void ApplyStandbyState();
     void HideOnboardSplash();
+    void HideWifiConfigPromptLocked();
     void SelectDockItem(size_t index);
+    void ShowLauncherHome();
+    void ShowAppDrawer();
+    void ShowCalendar();
+    void ShowAppDetail(size_t index);
     void ApplyDockSelection();
     void ApplyWakeSoundIndex(int index);
     void OpenWakeSoundPicker();
@@ -119,7 +138,13 @@ private:
     static void OnRefreshTimer(void* arg);
     static void OnProfileAvatarTimer(void* arg);
     static void OnOnboardSplashTimer(void* arg);
+    static void OnLauncherHomeGesture(lv_event_t* event);
+    static void OnAppDrawerGesture(lv_event_t* event);
+    static void OnCalendarGesture(lv_event_t* event);
+    static void OnAppDrawerItemClicked(lv_event_t* event);
+    static void OnAppBackClicked(lv_event_t* event);
     static void OnDockButtonClicked(lv_event_t* event);
+    static void OnSettingsWifiClicked(lv_event_t* event);
     static void OnSettingsWakeSoundClicked(lv_event_t* event);
     static void OnWakeSoundPickerOverlayClicked(lv_event_t* event);
     static void OnWakeSoundPickerCloseClicked(lv_event_t* event);
@@ -167,6 +192,13 @@ private:
     lv_obj_t* date_label_ = nullptr;
     lv_obj_t* launcher_layer_ = nullptr;
     lv_obj_t* launcher_content_ = nullptr;
+    lv_obj_t* launcher_home_ = nullptr;
+    lv_obj_t* home_avatar_shadow_ = nullptr;
+    lv_obj_t* home_avatar_sphere_ = nullptr;
+    lv_obj_t* app_drawer_ = nullptr;
+    lv_obj_t* app_back_button_ = nullptr;
+    lv_obj_t* app_back_label_ = nullptr;
+    lv_obj_t* settings_header_title_label_ = nullptr;
     lv_obj_t* launcher_title_label_ = nullptr;
     lv_obj_t* launcher_body_label_ = nullptr;
     lv_obj_t* calendar_root_ = nullptr;
@@ -177,6 +209,7 @@ private:
     lv_obj_t* profile_avatar_shadow_ = nullptr;
     lv_obj_t* profile_avatar_sphere_ = nullptr;
     lv_obj_t* settings_root_ = nullptr;
+    lv_obj_t* settings_wifi_value_label_ = nullptr;
     lv_obj_t* settings_wake_sound_value_label_ = nullptr;
     lv_obj_t* settings_background_value_label_ = nullptr;
     lv_obj_t* settings_text_color_value_label_ = nullptr;
@@ -192,6 +225,10 @@ private:
     lv_obj_t* background_counter_label_ = nullptr;
     lv_obj_t* onboard_splash_layer_ = nullptr;
     lv_obj_t* onboard_splash_logo_ = nullptr;
+    lv_obj_t* wifi_config_layer_ = nullptr;
+    lv_obj_t* wifi_config_ssid_label_ = nullptr;
+    lv_obj_t* wifi_config_password_label_ = nullptr;
+    lv_obj_t* wifi_config_url_label_ = nullptr;
     lv_obj_t* dock_ = nullptr;
     std::array<lv_obj_t*, kWeekdayCount> calendar_weekday_labels_ = {};
     std::array<lv_obj_t*, kCalendarDayCount> calendar_day_cells_ = {};
@@ -201,6 +238,10 @@ private:
     std::array<lv_obj_t*, kWakeSoundCount> wake_sound_check_labels_ = {};
     std::array<lv_obj_t*, kDockItemCount> dock_buttons_ = {};
     std::array<lv_obj_t*, kDockItemCount> dock_icon_labels_ = {};
+    std::array<lv_obj_t*, kDockItemCount> app_grid_buttons_ = {};
+    std::array<lv_obj_t*, kDockItemCount> app_grid_icon_boxes_ = {};
+    std::array<lv_obj_t*, kDockItemCount> app_grid_icon_labels_ = {};
+    std::array<lv_obj_t*, kDockItemCount> app_grid_title_labels_ = {};
 
     std::unique_ptr<LvglImage> wallpaper_image_ = nullptr;
     std::unique_ptr<LvglImage> onboard_logo_image_ = nullptr;
@@ -210,6 +251,7 @@ private:
     Ds02LunarDateProvider lunar_date_provider_ = nullptr;
 
     size_t active_dock_index_ = 0;
+    LauncherView launcher_view_ = LauncherView::Home;
     size_t background_index_ = 0;
     size_t persisted_background_index_ = 0;
     uint32_t text_color_ = 0xffffff;
@@ -235,6 +277,7 @@ private:
     std::string cached_launcher_title_;
     std::string cached_launcher_body_;
     std::string cached_calendar_title_;
+    std::string cached_settings_wifi_;
     std::string cached_settings_wake_sound_;
     std::string cached_settings_background_;
     std::string cached_settings_text_color_;
@@ -243,6 +286,9 @@ private:
     std::string cached_translate_right_;
     std::string cached_background_title_;
     std::string cached_background_counter_;
+    std::string cached_wifi_config_ssid_;
+    std::string cached_wifi_config_password_;
+    std::string cached_wifi_config_url_;
     std::array<std::string, kCalendarDayCount> cached_calendar_day_text_ = {};
 };
 

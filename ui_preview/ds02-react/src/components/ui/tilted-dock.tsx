@@ -1,13 +1,13 @@
 "use client";
 
 import { motion } from "framer-motion";
-import { Calendar, Search, Bell, Languages, Settings, Music } from "lucide-react";
+import { BookOpen, Terminal, Mic2, Languages, Settings, Music } from "lucide-react";
 import { useState, type ReactNode } from "react";
 
 const defaultItems: TiltedDockItem[] = [
-  { id: 1, icon: <Calendar size={28} />, label: "Lịch" },
-  { id: 2, icon: <Search size={28} />, label: "Search" },
-  { id: 3, icon: <Bell size={28} />, label: "Alerts" },
+  { id: 1, icon: <BookOpen size={28} />, label: "Teach" },
+  { id: 2, icon: <Terminal size={28} />, label: "Code" },
+  { id: 3, icon: <Mic2 size={28} />, label: "Record" },
   { id: 4, icon: <Languages size={28} />, label: "Translate" },
   { id: 5, icon: <Music size={28} />, label: "Music" },
   { id: 6, icon: <Settings size={28} />, label: "Settings" },
@@ -35,7 +35,7 @@ interface TiltedDockProps {
   scale?: number;
   /** Optional override for the wrapper element. */
   className?: string;
-  /** Items to render. Defaults to the built-in Home / Search / ... / Settings set. */
+  /** Items to render. Defaults to the built-in Home / Code / ... / Settings set. */
   items?: TiltedDockItem[];
   /** Currently selected tab id. Visually highlighted as the active tab. */
   activeId?: number;

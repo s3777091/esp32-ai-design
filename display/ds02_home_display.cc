@@ -21,6 +21,7 @@
 #include <font_awesome.h>
 #include <esp_log.h>
 #include <lvgl.h>
+#include <wifi_manager.h>
 
 LV_FONT_DECLARE(BUILTIN_TEXT_FONT);
 LV_FONT_DECLARE(BUILTIN_ICON_FONT);
@@ -33,10 +34,12 @@ constexpr int kRefreshIntervalUs = 1000 * 1000;
 constexpr int kProfileAvatarIntervalUs = 80 * 1000;
 constexpr int kValidYearBase = 2024 - 1900;
 constexpr int kSystemBarHeight = 20;
+constexpr int kAppHeaderHeight = 30;
 constexpr int kDockHeight = 38;
 constexpr int kDockBottomMargin = 4;
 constexpr int kLowBatteryThreshold = 15;
 constexpr int kOnboardSplashDurationMs = 4500;
+constexpr const char* kWifiConfigPassword = "0799888358";
 constexpr size_t kProfileDockIndex = 3;
 constexpr size_t kSettingsDockIndex = 5;
 
@@ -44,6 +47,12 @@ constexpr size_t kSettingsDockIndex = 5;
 #define DS02_WAKE_WORD_DISPLAY CONFIG_CUSTOM_WAKE_WORD_DISPLAY
 #else
 #define DS02_WAKE_WORD_DISPLAY "wake word"
+#endif
+
+#if defined(CONFIG_USE_ESP_WAKE_WORD) || defined(CONFIG_USE_AFE_WAKE_WORD) || defined(CONFIG_USE_CUSTOM_WAKE_WORD)
+#define DS02_HAS_WAKE_WORD 1
+#else
+#define DS02_HAS_WAKE_WORD 0
 #endif
 
 struct DockItem {
@@ -97,21 +106,62 @@ struct DevicePickerRuntime {
 #define DS02_TRANSLATE_DOCK_USES_ICON_FONT false
 #endif
 
-#if defined(FONT_AWESOME_CALENDAR_DAYS) && defined(FONT_AWESOME_MAGNIFYING_GLASS) && \
-    defined(FONT_AWESOME_BELL) && defined(FONT_AWESOME_MUSIC) && defined(FONT_AWESOME_GEAR)
+#if defined(FONT_AWESOME_BOOK_OPEN)
+#define DS02_TEACH_DOCK_ICON FONT_AWESOME_BOOK_OPEN
+#define DS02_TEACH_DOCK_USES_ICON_FONT true
+#elif defined(FONT_AWESOME_BOOK)
+#define DS02_TEACH_DOCK_ICON FONT_AWESOME_BOOK
+#define DS02_TEACH_DOCK_USES_ICON_FONT true
+#elif defined(FONT_AWESOME_GRADUATION_CAP)
+#define DS02_TEACH_DOCK_ICON FONT_AWESOME_GRADUATION_CAP
+#define DS02_TEACH_DOCK_USES_ICON_FONT true
+#elif defined(FONT_AWESOME_CHALKBOARD_USER)
+#define DS02_TEACH_DOCK_ICON FONT_AWESOME_CHALKBOARD_USER
+#define DS02_TEACH_DOCK_USES_ICON_FONT true
+#else
+#define DS02_TEACH_DOCK_ICON "EDU"
+#define DS02_TEACH_DOCK_USES_ICON_FONT false
+#endif
+
+#if defined(FONT_AWESOME_TERMINAL)
+#define DS02_SEARCH_DOCK_ICON FONT_AWESOME_TERMINAL
+#define DS02_SEARCH_DOCK_USES_ICON_FONT true
+#elif defined(FONT_AWESOME_CODE)
+#define DS02_SEARCH_DOCK_ICON FONT_AWESOME_CODE
+#define DS02_SEARCH_DOCK_USES_ICON_FONT true
+#else
+#define DS02_SEARCH_DOCK_ICON "CMD"
+#define DS02_SEARCH_DOCK_USES_ICON_FONT false
+#endif
+
+#if defined(FONT_AWESOME_MICROPHONE)
+#define DS02_RECORD_DOCK_ICON FONT_AWESOME_MICROPHONE
+#define DS02_RECORD_DOCK_USES_ICON_FONT true
+#elif defined(FONT_AWESOME_MICROPHONE_LINES)
+#define DS02_RECORD_DOCK_ICON FONT_AWESOME_MICROPHONE_LINES
+#define DS02_RECORD_DOCK_USES_ICON_FONT true
+#elif defined(FONT_AWESOME_MICROPHONE_ALT)
+#define DS02_RECORD_DOCK_ICON FONT_AWESOME_MICROPHONE_ALT
+#define DS02_RECORD_DOCK_USES_ICON_FONT true
+#else
+#define DS02_RECORD_DOCK_ICON "REC"
+#define DS02_RECORD_DOCK_USES_ICON_FONT false
+#endif
+
+#if defined(FONT_AWESOME_MUSIC) && defined(FONT_AWESOME_GEAR)
 constexpr std::array<DockItem, 6> kDockItems = {{
-    {FONT_AWESOME_CALENDAR_DAYS, "Calendar", "", true},
-    {FONT_AWESOME_MAGNIFYING_GLASS, "Search", "Tim kiem thiet bi, bai hat, cai dat...", true},
-    {FONT_AWESOME_BELL, "Alerts", "Khong co thong bao moi.", true},
+    {DS02_TEACH_DOCK_ICON, "Teach", "Bai hoc, tro giang va luyen tap.", DS02_TEACH_DOCK_USES_ICON_FONT},
+    {DS02_SEARCH_DOCK_ICON, "Code", "Code, terminal, debug...", DS02_SEARCH_DOCK_USES_ICON_FONT},
+    {DS02_RECORD_DOCK_ICON, "Record", "Ghi am va luu lai giong noi.", DS02_RECORD_DOCK_USES_ICON_FONT},
     {DS02_TRANSLATE_DOCK_ICON, "Translate", "Vi <-> Chinese / Vi <-> En", DS02_TRANSLATE_DOCK_USES_ICON_FONT},
     {FONT_AWESOME_MUSIC, "Music", "Chua co bai hat nao dang phat.", true},
     {FONT_AWESOME_GEAR, "Settings", "Wi-Fi, am thanh, hien thi, ngon ngu...", true},
 }};
 #else
 constexpr std::array<DockItem, 6> kDockItems = {{
-    {"CAL", "Calendar", "", false},
-    {"SRC", "Search", "Tim kiem thiet bi, bai hat, cai dat...", false},
-    {"ALT", "Alerts", "Khong co thong bao moi.", false},
+    {"EDU", "Teach", "Bai hoc, tro giang va luyen tap.", false},
+    {"CMD", "Code", "Code, terminal, debug...", false},
+    {"REC", "Record", "Ghi am va luu lai giong noi.", false},
     {"TR", "Translate", "Vi <-> Chinese / Vi <-> En", false},
     {"MUS", "Music", "Chua co bai hat nao dang phat.", false},
     {"SET", "Settings", "Wi-Fi, am thanh, hien thi, ngon ngu...", false},
@@ -145,13 +195,6 @@ constexpr std::array<BackgroundItem, 20> kBackgroundItems = {{
     {"sa_mac.png", "Sa Mac"},
 }};
 
-constexpr std::array<DeviceItem, kDevicePickerMaxItems> kWifiDeviceItems = {{
-    {"Ekko Home 5G", "Strong signal"},
-    {"Studio Router", "Secured"},
-    {"Office Mesh", "Saved network"},
-    {"Guest Wi-Fi", "Open network"},
-}};
-
 constexpr std::array<DeviceItem, kDevicePickerMaxItems> kBluetoothDeviceItems = {{
     {"Ekko Buds", "Audio available"},
     {"DS-02 Speaker", "Nearby"},
@@ -164,7 +207,6 @@ constexpr std::array<TranslateModeItem, 2> kTranslateModeItems = {{
     {"Vi <-> En", "Vi", "En"},
 }};
 
-DevicePickerRuntime g_wifi_device_picker;
 DevicePickerRuntime g_bluetooth_device_picker;
 
 lv_color_t Color(uint32_t value) {
@@ -202,6 +244,30 @@ void ClearBoxStyle(lv_obj_t* obj) {
     lv_obj_set_style_border_width(obj, 0, 0);
     lv_obj_set_style_radius(obj, 0, 0);
     lv_obj_clear_flag(obj, LV_OBJ_FLAG_SCROLLABLE);
+}
+
+void AddEventCallbackToTree(lv_obj_t* obj, lv_event_cb_t callback, lv_event_code_t code, void* user_data) {
+    if (obj == nullptr) {
+        return;
+    }
+
+    lv_obj_add_event_cb(obj, callback, code, user_data);
+    const uint32_t child_count = lv_obj_get_child_cnt(obj);
+    for (uint32_t i = 0; i < child_count; ++i) {
+        AddEventCallbackToTree(lv_obj_get_child(obj, i), callback, code, user_data);
+    }
+}
+
+void AddClickableFlagToTree(lv_obj_t* obj) {
+    if (obj == nullptr) {
+        return;
+    }
+
+    lv_obj_add_flag(obj, LV_OBJ_FLAG_CLICKABLE);
+    const uint32_t child_count = lv_obj_get_child_cnt(obj);
+    for (uint32_t i = 0; i < child_count; ++i) {
+        AddClickableFlagToTree(lv_obj_get_child(obj, i));
+    }
 }
 
 int Clamp(int value, int low, int high) {
@@ -263,7 +329,6 @@ void CloseDevicePicker(DevicePickerRuntime& picker) {
 }
 
 void CloseAllDevicePickers() {
-    CloseDevicePicker(g_wifi_device_picker);
     CloseDevicePicker(g_bluetooth_device_picker);
 }
 
@@ -494,6 +559,22 @@ bool GetBackgroundAssetData(const char* file, void*& ptr, size_t& size) {
     return assets.GetAssetData(image_path, ptr, size);
 }
 
+std::string WifiSettingsValue() {
+    auto& wifi = WifiManager::GetInstance();
+    if (!wifi.IsInitialized()) {
+        return "Required";
+    }
+    if (wifi.IsConfigMode()) {
+        const auto url = wifi.GetApWebUrl();
+        return url.empty() ? "Setup mode" : url;
+    }
+    if (wifi.IsConnected()) {
+        const auto ssid = wifi.GetSsid();
+        return ssid.empty() ? "Connected" : ssid;
+    }
+    return "Setup required";
+}
+
 bool GetImageHeader(const lv_img_dsc_t* image_dsc, lv_image_header_t& header) {
     if (image_dsc == nullptr) {
         return false;
@@ -616,6 +697,7 @@ void Ds02HomeDisplay::SetupUI() {
     CreateWakeSoundPickerObjects();
     CreateBackgroundGalleryObjects();
     CreateOnboardSplashObjects();
+    CreateWifiConfigPromptObjects();
     ApplyThemeColors(current_theme_);
 
     Settings settings("display", false);
@@ -745,7 +827,7 @@ void Ds02HomeDisplay::CreateLauncherObjects() {
     launcher_layer_ = lv_obj_create(root_);
     lv_obj_set_size(launcher_layer_, LV_PCT(100), LV_PCT(100));
     ClearBoxStyle(launcher_layer_);
-    lv_obj_set_style_bg_color(launcher_layer_, Color(0x000000), 0);
+    lv_obj_set_style_bg_color(launcher_layer_, Color(0xf4f6fb), 0);
     lv_obj_set_style_bg_opa(launcher_layer_, LV_OPA_COVER, 0);
     lv_obj_add_flag(launcher_layer_, LV_OBJ_FLAG_HIDDEN);
 
@@ -755,9 +837,22 @@ void Ds02HomeDisplay::CreateLauncherObjects() {
     lv_obj_set_style_bg_opa(launcher_content_, LV_OPA_TRANSP, 0);
     lv_obj_align(launcher_content_, LV_ALIGN_TOP_MID, 0, kSystemBarHeight);
 
+    CreateLauncherHomeObjects();
+    CreateAppDrawerObjects();
     CreateCalendarObjects();
     CreateProfileObjects();
     CreateSettingsObjects();
+
+    const int settings_header_title_width = Clamp(safe_width - 64, 64, 132);
+    settings_header_title_label_ = lv_label_create(launcher_content_);
+    lv_obj_set_width(settings_header_title_label_, settings_header_title_width);
+    lv_obj_set_style_text_align(settings_header_title_label_, LV_TEXT_ALIGN_RIGHT, 0);
+    lv_obj_set_style_text_color(settings_header_title_label_, Color(0x0f172a), 0);
+    lv_obj_set_style_text_font(settings_header_title_label_, &BUILTIN_TEXT_FONT, 0);
+    lv_label_set_long_mode(settings_header_title_label_, LV_LABEL_LONG_DOT);
+    lv_label_set_text(settings_header_title_label_, "Settings");
+    lv_obj_align(settings_header_title_label_, LV_ALIGN_TOP_RIGHT, -13, 9);
+    lv_obj_add_flag(settings_header_title_label_, LV_OBJ_FLAG_HIDDEN);
 
     launcher_title_label_ = lv_label_create(launcher_content_);
     lv_obj_set_width(launcher_title_label_, safe_width - 32);
@@ -765,7 +860,7 @@ void Ds02HomeDisplay::CreateLauncherObjects() {
     lv_obj_set_style_text_color(launcher_title_label_, Color(0xffffff), 0);
     lv_obj_set_style_text_font(launcher_title_label_, &BUILTIN_TEXT_FONT, 0);
     lv_label_set_long_mode(launcher_title_label_, LV_LABEL_LONG_DOT);
-    lv_obj_align(launcher_title_label_, LV_ALIGN_CENTER, 0, -20);
+    lv_obj_align(launcher_title_label_, LV_ALIGN_CENTER, 0, -10);
 
     launcher_body_label_ = lv_label_create(launcher_content_);
     lv_obj_set_width(launcher_body_label_, safe_width - 48);
@@ -773,11 +868,190 @@ void Ds02HomeDisplay::CreateLauncherObjects() {
     lv_obj_set_style_text_color(launcher_body_label_, Color(0xa9b2bd), 0);
     lv_obj_set_style_text_font(launcher_body_label_, &BUILTIN_TEXT_FONT, 0);
     lv_label_set_long_mode(launcher_body_label_, LV_LABEL_LONG_WRAP);
-    lv_obj_align(launcher_body_label_, LV_ALIGN_CENTER, 0, 18);
+    lv_obj_align(launcher_body_label_, LV_ALIGN_CENTER, 0, 28);
 
-    CreateDockObjects();
+    CreateAppBackButtonObject();
     RefreshLauncherPage(true);
-    ApplyDockSelection();
+    ApplyAppDrawerStyle();
+}
+
+void Ds02HomeDisplay::CreateLauncherHomeObjects() {
+    const int safe_width = width_ > 0 ? width_ : 320;
+    const int safe_height = height_ > 0 ? height_ : 240;
+    const int content_height = std::max(1, safe_height - kSystemBarHeight);
+    const int orb_size = Clamp(std::min(safe_width, content_height) * 100 / 300, 58, 86);
+
+    launcher_home_ = lv_obj_create(launcher_content_);
+    lv_obj_set_size(launcher_home_, safe_width, content_height);
+    ClearBoxStyle(launcher_home_);
+    lv_obj_set_style_bg_color(launcher_home_, Color(0xf4f6fb), 0);
+    lv_obj_set_style_bg_opa(launcher_home_, LV_OPA_COVER, 0);
+    lv_obj_add_flag(launcher_home_, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_align(launcher_home_, LV_ALIGN_TOP_MID, 0, 0);
+
+    home_avatar_shadow_ = lv_obj_create(launcher_home_);
+    lv_obj_set_size(home_avatar_shadow_, orb_size, orb_size);
+    ClearBoxStyle(home_avatar_shadow_);
+    lv_obj_set_style_radius(home_avatar_shadow_, 999, 0);
+    lv_obj_set_style_bg_color(home_avatar_shadow_, Color(0x15251d), 0);
+    lv_obj_set_style_bg_opa(home_avatar_shadow_, LV_OPA_50, 0);
+    lv_obj_set_style_shadow_width(home_avatar_shadow_, 10, 0);
+    lv_obj_set_style_shadow_color(home_avatar_shadow_, Color(0x0f172a), 0);
+    lv_obj_set_style_shadow_opa(home_avatar_shadow_, LV_OPA_40, 0);
+    lv_obj_align(home_avatar_shadow_, LV_ALIGN_CENTER, 0, 3);
+
+    home_avatar_sphere_ = lv_obj_create(launcher_home_);
+    lv_obj_set_size(home_avatar_sphere_, orb_size, orb_size);
+    ClearBoxStyle(home_avatar_sphere_);
+    lv_obj_set_style_radius(home_avatar_sphere_, 999, 0);
+    lv_obj_set_style_bg_color(home_avatar_sphere_, Color(0x65d8ff), 0);
+    lv_obj_set_style_bg_grad_color(home_avatar_sphere_, Color(0x06251a), 0);
+    lv_obj_set_style_bg_grad_dir(home_avatar_sphere_, LV_GRAD_DIR_VER, 0);
+    lv_obj_set_style_bg_opa(home_avatar_sphere_, LV_OPA_COVER, 0);
+    lv_obj_set_style_shadow_width(home_avatar_sphere_, 5, 0);
+    lv_obj_set_style_shadow_color(home_avatar_sphere_, Color(0x04110d), 0);
+    lv_obj_set_style_shadow_opa(home_avatar_sphere_, LV_OPA_50, 0);
+    lv_obj_align(home_avatar_sphere_, LV_ALIGN_CENTER, 0, 0);
+
+    auto* cloud_top = lv_obj_create(home_avatar_sphere_);
+    lv_obj_set_size(cloud_top, LV_PCT(58), LV_PCT(20));
+    ClearBoxStyle(cloud_top);
+    lv_obj_set_style_radius(cloud_top, 999, 0);
+    lv_obj_set_style_bg_color(cloud_top, Color(0xf4fdff), 0);
+    lv_obj_set_style_bg_opa(cloud_top, LV_OPA_70, 0);
+    lv_obj_align(cloud_top, LV_ALIGN_TOP_LEFT, 7, 7);
+
+    auto* cloud_side = lv_obj_create(home_avatar_sphere_);
+    lv_obj_set_size(cloud_side, LV_PCT(34), LV_PCT(26));
+    ClearBoxStyle(cloud_side);
+    lv_obj_set_style_radius(cloud_side, 999, 0);
+    lv_obj_set_style_bg_color(cloud_side, Color(0xecffdb), 0);
+    lv_obj_set_style_bg_opa(cloud_side, LV_OPA_70, 0);
+    lv_obj_align(cloud_side, LV_ALIGN_TOP_RIGHT, -4, 11);
+
+    auto* land_dark = lv_obj_create(home_avatar_sphere_);
+    lv_obj_set_size(land_dark, LV_PCT(62), LV_PCT(48));
+    ClearBoxStyle(land_dark);
+    lv_obj_set_style_radius(land_dark, 999, 0);
+    lv_obj_set_style_bg_color(land_dark, Color(0x073521), 0);
+    lv_obj_set_style_bg_opa(land_dark, LV_OPA_80, 0);
+    lv_obj_align(land_dark, LV_ALIGN_BOTTOM_RIGHT, -1, -5);
+
+    auto* land_light = lv_obj_create(home_avatar_sphere_);
+    lv_obj_set_size(land_light, LV_PCT(42), LV_PCT(18));
+    ClearBoxStyle(land_light);
+    lv_obj_set_style_radius(land_light, 999, 0);
+    lv_obj_set_style_bg_color(land_light, Color(0xc5ee78), 0);
+    lv_obj_set_style_bg_opa(land_light, LV_OPA_70, 0);
+    lv_obj_align(land_light, LV_ALIGN_BOTTOM_LEFT, 1, -6);
+
+    auto* highlight = lv_obj_create(home_avatar_sphere_);
+    lv_obj_set_size(highlight, LV_PCT(36), LV_PCT(16));
+    ClearBoxStyle(highlight);
+    lv_obj_set_style_radius(highlight, 999, 0);
+    lv_obj_set_style_bg_color(highlight, Color(0xffffff), 0);
+    lv_obj_set_style_bg_opa(highlight, LV_OPA_70, 0);
+    lv_obj_align(highlight, LV_ALIGN_TOP_LEFT, 10, 4);
+
+    AddClickableFlagToTree(launcher_home_);
+    AddEventCallbackToTree(launcher_home_, OnLauncherHomeGesture, LV_EVENT_GESTURE, this);
+}
+
+void Ds02HomeDisplay::CreateAppDrawerObjects() {
+    const int safe_width = width_ > 0 ? width_ : 320;
+    const int safe_height = height_ > 0 ? height_ : 240;
+    const int content_height = std::max(1, safe_height - kSystemBarHeight);
+    const int grid_width = Clamp(safe_width - 24, 216, 292);
+    const int columns = 3;
+    const int rows = 2;
+    const int cell_width = grid_width / columns;
+    const int cell_height = 74;
+    const int row_gap = 10;
+    const int start_x = (safe_width - grid_width) / 2;
+    const int start_y = std::max(12, (content_height - rows * cell_height - row_gap) / 2);
+
+    app_drawer_ = lv_obj_create(launcher_content_);
+    lv_obj_set_size(app_drawer_, safe_width, content_height);
+    ClearBoxStyle(app_drawer_);
+    lv_obj_set_style_bg_color(app_drawer_, Color(0xf4f6fb), 0);
+    lv_obj_set_style_bg_opa(app_drawer_, LV_OPA_COVER, 0);
+    lv_obj_add_flag(app_drawer_, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_flag(app_drawer_, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_align(app_drawer_, LV_ALIGN_TOP_MID, 0, 0);
+
+    for (size_t i = 0; i < app_grid_buttons_.size(); ++i) {
+        const int row = static_cast<int>(i) / columns;
+        const int col = static_cast<int>(i) % columns;
+
+        auto* button = lv_obj_create(app_drawer_);
+        app_grid_buttons_[i] = button;
+        lv_obj_set_size(button, cell_width, cell_height);
+        ClearBoxStyle(button);
+        lv_obj_set_style_bg_opa(button, LV_OPA_TRANSP, 0);
+        lv_obj_add_flag(button, LV_OBJ_FLAG_CLICKABLE);
+        lv_obj_add_event_cb(button, OnAppDrawerItemClicked, LV_EVENT_CLICKED, this);
+        lv_obj_align(button, LV_ALIGN_TOP_LEFT,
+                     start_x + col * cell_width,
+                     start_y + row * (cell_height + row_gap));
+
+        auto* icon_box = lv_obj_create(button);
+        app_grid_icon_boxes_[i] = icon_box;
+        lv_obj_set_size(icon_box, 43, 43);
+        ClearBoxStyle(icon_box);
+        lv_obj_set_style_radius(icon_box, 12, 0);
+        lv_obj_set_style_bg_color(icon_box, Color(0xffffff), 0);
+        lv_obj_set_style_bg_opa(icon_box, LV_OPA_90, 0);
+        lv_obj_set_style_border_width(icon_box, 1, 0);
+        lv_obj_set_style_border_color(icon_box, Color(0xcbd5e1), 0);
+        lv_obj_set_style_border_opa(icon_box, LV_OPA_80, 0);
+        lv_obj_set_style_shadow_width(icon_box, 6, 0);
+        lv_obj_set_style_shadow_color(icon_box, Color(0x0f172a), 0);
+        lv_obj_set_style_shadow_opa(icon_box, LV_OPA_20, 0);
+        lv_obj_align(icon_box, LV_ALIGN_TOP_MID, 0, 1);
+
+        auto* icon = lv_label_create(icon_box);
+        app_grid_icon_labels_[i] = icon;
+        lv_obj_set_style_text_align(icon, LV_TEXT_ALIGN_CENTER, 0);
+        lv_obj_set_style_text_font(icon, kDockItems[i].use_icon_font ? &BUILTIN_ICON_FONT : &BUILTIN_TEXT_FONT, 0);
+        lv_label_set_text(icon, kDockItems[i].icon);
+        lv_obj_center(icon);
+
+        auto* title = lv_label_create(button);
+        app_grid_title_labels_[i] = title;
+        lv_obj_set_width(title, cell_width);
+        lv_obj_set_style_text_align(title, LV_TEXT_ALIGN_CENTER, 0);
+        lv_obj_set_style_text_font(title, &BUILTIN_TEXT_FONT, 0);
+        lv_label_set_long_mode(title, LV_LABEL_LONG_DOT);
+        lv_label_set_text(title, kDockItems[i].title);
+        lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 52);
+    }
+
+    AddEventCallbackToTree(app_drawer_, OnAppDrawerGesture, LV_EVENT_GESTURE, this);
+}
+
+void Ds02HomeDisplay::CreateAppBackButtonObject() {
+    app_back_button_ = lv_obj_create(launcher_content_);
+    lv_obj_set_size(app_back_button_, 26, 26);
+    ClearBoxStyle(app_back_button_);
+    lv_obj_set_style_radius(app_back_button_, 8, 0);
+    lv_obj_set_style_bg_color(app_back_button_, Color(0xffffff), 0);
+    lv_obj_set_style_bg_opa(app_back_button_, LV_OPA_80, 0);
+    lv_obj_set_style_border_width(app_back_button_, 1, 0);
+    lv_obj_set_style_border_color(app_back_button_, Color(0xcbd5e1), 0);
+    lv_obj_set_style_border_opa(app_back_button_, LV_OPA_80, 0);
+    lv_obj_set_style_shadow_width(app_back_button_, 7, 0);
+    lv_obj_set_style_shadow_color(app_back_button_, Color(0x0f172a), 0);
+    lv_obj_set_style_shadow_opa(app_back_button_, LV_OPA_20, 0);
+    lv_obj_add_flag(app_back_button_, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_flag(app_back_button_, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_add_event_cb(app_back_button_, OnAppBackClicked, LV_EVENT_CLICKED, this);
+    lv_obj_align(app_back_button_, LV_ALIGN_TOP_LEFT, 10, 6);
+
+    app_back_label_ = lv_label_create(app_back_button_);
+    lv_obj_set_style_text_color(app_back_label_, Color(0x0f172a), 0);
+    lv_obj_set_style_text_font(app_back_label_, &BUILTIN_TEXT_FONT, 0);
+    lv_label_set_text(app_back_label_, "<");
+    lv_obj_center(app_back_label_);
 }
 
 void Ds02HomeDisplay::CreateSystemBarObjects() {
@@ -882,7 +1156,7 @@ void Ds02HomeDisplay::CreateCalendarObjects() {
     const int safe_width = width_ > 0 ? width_ : 320;
     const int safe_height = height_ > 0 ? height_ : 240;
     const int content_height = std::max(120, safe_height - kSystemBarHeight);
-    const int calendar_height = std::max(120, content_height - kDockHeight - kDockBottomMargin - 8);
+    const int calendar_height = content_height;
     const int margin_x = 8;
     const int header_height = 30;
     const int grid_y = header_height;
@@ -893,6 +1167,7 @@ void Ds02HomeDisplay::CreateCalendarObjects() {
     lv_obj_set_size(calendar_root_, safe_width, calendar_height);
     ClearBoxStyle(calendar_root_);
     lv_obj_set_style_bg_opa(calendar_root_, LV_OPA_TRANSP, 0);
+    lv_obj_add_flag(calendar_root_, LV_OBJ_FLAG_HIDDEN);
     lv_obj_align(calendar_root_, LV_ALIGN_TOP_MID, 0, 0);
 
     calendar_month_label_ = lv_label_create(calendar_root_);
@@ -932,12 +1207,15 @@ void Ds02HomeDisplay::CreateCalendarObjects() {
         lv_obj_set_style_text_font(label, &BUILTIN_TEXT_FONT, 0);
         lv_obj_center(label);
     }
+
+    AddClickableFlagToTree(calendar_root_);
+    AddEventCallbackToTree(calendar_root_, OnCalendarGesture, LV_EVENT_GESTURE, this);
 }
 
 void Ds02HomeDisplay::CreateProfileObjects() {
     const int safe_width = width_ > 0 ? width_ : 320;
     const int safe_height = height_ > 0 ? height_ : 240;
-    const int content_height = std::max(120, safe_height - kSystemBarHeight - kDockHeight - kDockBottomMargin - 4);
+    const int content_height = std::max(120, safe_height - kSystemBarHeight - kAppHeaderHeight);
     profile_avatar_base_size_ = Clamp(std::min(safe_width, content_height) * 58 / 300, 27, 48);
 
     profile_avatar_root_ = lv_obj_create(launcher_content_);
@@ -945,7 +1223,7 @@ void Ds02HomeDisplay::CreateProfileObjects() {
     ClearBoxStyle(profile_avatar_root_);
     lv_obj_set_style_bg_color(profile_avatar_root_, Color(0x000000), 0);
     lv_obj_set_style_bg_opa(profile_avatar_root_, LV_OPA_COVER, 0);
-    lv_obj_align(profile_avatar_root_, LV_ALIGN_TOP_MID, 0, 0);
+    lv_obj_align(profile_avatar_root_, LV_ALIGN_TOP_MID, 0, kAppHeaderHeight);
     lv_obj_add_flag(profile_avatar_root_, LV_OBJ_FLAG_HIDDEN);
 
     translate_left_label_ = lv_label_create(profile_avatar_root_);
@@ -1061,7 +1339,7 @@ void Ds02HomeDisplay::CreateProfileObjects() {
 void Ds02HomeDisplay::CreateSettingsObjects() {
     const int safe_width = width_ > 0 ? width_ : 320;
     const int safe_height = height_ > 0 ? height_ : 240;
-    const int content_height = std::max(120, safe_height - kSystemBarHeight - kDockHeight - kDockBottomMargin - 8);
+    const int content_height = std::max(120, safe_height - kSystemBarHeight - kAppHeaderHeight);
     const int row_width = Clamp(safe_width - 24, 216, 296);
 
     settings_root_ = lv_obj_create(launcher_content_);
@@ -1069,19 +1347,46 @@ void Ds02HomeDisplay::CreateSettingsObjects() {
     ClearBoxStyle(settings_root_);
     lv_obj_set_style_bg_color(settings_root_, Color(0x050609), 0);
     lv_obj_set_style_bg_opa(settings_root_, LV_OPA_COVER, 0);
-    lv_obj_align(settings_root_, LV_ALIGN_TOP_MID, 0, 0);
+    lv_obj_align(settings_root_, LV_ALIGN_TOP_MID, 0, kAppHeaderHeight);
     lv_obj_add_flag(settings_root_, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_set_scroll_dir(settings_root_, LV_DIR_VER);
     lv_obj_set_scrollbar_mode(settings_root_, LV_SCROLLBAR_MODE_OFF);
     lv_obj_add_flag(settings_root_, LV_OBJ_FLAG_HIDDEN);
-    ResetDevicePicker(g_wifi_device_picker);
     ResetDevicePicker(g_bluetooth_device_picker);
 
-    auto* title = lv_label_create(settings_root_);
-    lv_obj_set_style_text_color(title, Color(0xffffff), 0);
-    lv_obj_set_style_text_font(title, &BUILTIN_TEXT_FONT, 0);
-    lv_label_set_text(title, "Settings");
-    lv_obj_align(title, LV_ALIGN_TOP_LEFT, 14, 7);
+    auto create_wifi_row = [&](int y) {
+        auto* row = lv_obj_create(settings_root_);
+        lv_obj_set_size(row, row_width, 34);
+        ClearBoxStyle(row);
+        lv_obj_set_style_radius(row, 8, 0);
+        lv_obj_set_style_bg_color(row, Color(0x111827), 0);
+        lv_obj_set_style_bg_opa(row, LV_OPA_COVER, 0);
+        lv_obj_set_style_border_width(row, 1, 0);
+        lv_obj_set_style_border_color(row, Color(0x273241), 0);
+        lv_obj_add_flag(row, LV_OBJ_FLAG_CLICKABLE);
+        lv_obj_add_event_cb(row, OnSettingsWifiClicked, LV_EVENT_CLICKED, this);
+        lv_obj_align(row, LV_ALIGN_TOP_MID, 0, y);
+
+        auto* row_title = lv_label_create(row);
+        lv_obj_set_style_text_color(row_title, Color(0xf8fafc), 0);
+        lv_obj_set_style_text_font(row_title, &BUILTIN_TEXT_FONT, 0);
+        lv_label_set_text(row_title, "Wi-Fi");
+        lv_obj_align(row_title, LV_ALIGN_LEFT_MID, 10, -6);
+
+        settings_wifi_value_label_ = lv_label_create(row);
+        lv_obj_set_width(settings_wifi_value_label_, row_width - 54);
+        lv_obj_set_style_text_align(settings_wifi_value_label_, LV_TEXT_ALIGN_LEFT, 0);
+        lv_obj_set_style_text_color(settings_wifi_value_label_, Color(0x67e8f9), 0);
+        lv_obj_set_style_text_font(settings_wifi_value_label_, &BUILTIN_TEXT_FONT, 0);
+        lv_label_set_long_mode(settings_wifi_value_label_, LV_LABEL_LONG_DOT);
+        lv_obj_align(settings_wifi_value_label_, LV_ALIGN_LEFT_MID, 10, 8);
+
+        auto* chevron = lv_label_create(row);
+        lv_obj_set_style_text_color(chevron, Color(0x93a4b8), 0);
+        lv_obj_set_style_text_font(chevron, &BUILTIN_TEXT_FONT, 0);
+        lv_label_set_text(chevron, ">");
+        lv_obj_align(chevron, LV_ALIGN_RIGHT_MID, -10, 0);
+    };
 
     auto create_device_row = [&](DevicePickerRuntime& picker, int y, const char* title_text,
                                  uint32_t accent_color) {
@@ -1118,9 +1423,12 @@ void Ds02HomeDisplay::CreateSettingsObjects() {
         lv_obj_align(chevron, LV_ALIGN_RIGHT_MID, -10, 0);
     };
 
-    create_device_row(g_wifi_device_picker, 30, "Wi-Fi", 0x67e8f9);
+    create_wifi_row(30);
     create_device_row(g_bluetooth_device_picker, 66, "Bluetooth", 0x60a5fa);
 
+    int settings_row_y = 102;
+
+#if DS02_HAS_WAKE_WORD
     auto* wake_row = lv_obj_create(settings_root_);
     lv_obj_set_size(wake_row, row_width, 32);
     ClearBoxStyle(wake_row);
@@ -1129,7 +1437,7 @@ void Ds02HomeDisplay::CreateSettingsObjects() {
     lv_obj_set_style_bg_opa(wake_row, LV_OPA_COVER, 0);
     lv_obj_set_style_border_width(wake_row, 1, 0);
     lv_obj_set_style_border_color(wake_row, Color(0x273241), 0);
-    lv_obj_align(wake_row, LV_ALIGN_TOP_MID, 0, 102);
+    lv_obj_align(wake_row, LV_ALIGN_TOP_MID, 0, settings_row_y);
 
     auto* wake_title = lv_label_create(wake_row);
     lv_obj_set_style_text_color(wake_title, Color(0xf8fafc), 0);
@@ -1143,6 +1451,9 @@ void Ds02HomeDisplay::CreateSettingsObjects() {
     lv_label_set_text(wake_value, DS02_WAKE_WORD_DISPLAY);
     lv_obj_align(wake_value, LV_ALIGN_RIGHT_MID, -10, 5);
 
+    settings_row_y += 36;
+#endif
+
     auto* wake_sound_row = lv_obj_create(settings_root_);
     lv_obj_set_size(wake_sound_row, row_width, 32);
     ClearBoxStyle(wake_sound_row);
@@ -1153,7 +1464,7 @@ void Ds02HomeDisplay::CreateSettingsObjects() {
     lv_obj_set_style_border_color(wake_sound_row, Color(0x273241), 0);
     lv_obj_add_flag(wake_sound_row, LV_OBJ_FLAG_CLICKABLE);
     lv_obj_add_event_cb(wake_sound_row, OnSettingsWakeSoundClicked, LV_EVENT_CLICKED, this);
-    lv_obj_align(wake_sound_row, LV_ALIGN_TOP_MID, 0, 138);
+    lv_obj_align(wake_sound_row, LV_ALIGN_TOP_MID, 0, settings_row_y);
 
     auto* wake_sound_title = lv_label_create(wake_sound_row);
     lv_obj_set_style_text_color(wake_sound_title, Color(0xf8fafc), 0);
@@ -1175,6 +1486,8 @@ void Ds02HomeDisplay::CreateSettingsObjects() {
     lv_label_set_text(wake_sound_chevron, ">");
     lv_obj_align(wake_sound_chevron, LV_ALIGN_RIGHT_MID, -10, 0);
 
+    settings_row_y += 36;
+
     auto* background_row = lv_obj_create(settings_root_);
     lv_obj_set_size(background_row, row_width, 34);
     ClearBoxStyle(background_row);
@@ -1185,7 +1498,7 @@ void Ds02HomeDisplay::CreateSettingsObjects() {
     lv_obj_set_style_border_color(background_row, Color(0x273241), 0);
     lv_obj_add_flag(background_row, LV_OBJ_FLAG_CLICKABLE);
     lv_obj_add_event_cb(background_row, OnSettingsBackgroundClicked, LV_EVENT_CLICKED, this);
-    lv_obj_align(background_row, LV_ALIGN_TOP_MID, 0, 174);
+    lv_obj_align(background_row, LV_ALIGN_TOP_MID, 0, settings_row_y);
 
     auto* background_title = lv_label_create(background_row);
     lv_obj_set_style_text_color(background_title, Color(0xf8fafc), 0);
@@ -1207,6 +1520,8 @@ void Ds02HomeDisplay::CreateSettingsObjects() {
     lv_label_set_text(chevron, ">");
     lv_obj_align(chevron, LV_ALIGN_RIGHT_MID, -10, 0);
 
+    settings_row_y += 38;
+
     auto* text_color_row = lv_obj_create(settings_root_);
     lv_obj_set_size(text_color_row, row_width, 28);
     ClearBoxStyle(text_color_row);
@@ -1215,7 +1530,7 @@ void Ds02HomeDisplay::CreateSettingsObjects() {
     lv_obj_set_style_bg_opa(text_color_row, LV_OPA_COVER, 0);
     lv_obj_set_style_border_width(text_color_row, 1, 0);
     lv_obj_set_style_border_color(text_color_row, Color(0x273241), 0);
-    lv_obj_align(text_color_row, LV_ALIGN_TOP_MID, 0, 212);
+    lv_obj_align(text_color_row, LV_ALIGN_TOP_MID, 0, settings_row_y);
 
     auto* text_color_title = lv_label_create(text_color_row);
     lv_obj_set_style_text_color(text_color_title, Color(0xf8fafc), 0);
@@ -1231,6 +1546,8 @@ void Ds02HomeDisplay::CreateSettingsObjects() {
     lv_label_set_long_mode(settings_text_color_value_label_, LV_LABEL_LONG_DOT);
     lv_obj_align(settings_text_color_value_label_, LV_ALIGN_RIGHT_MID, -10, 0);
 
+    settings_row_y += 40;
+
     auto* translate_row = lv_obj_create(settings_root_);
     lv_obj_set_size(translate_row, row_width, 28);
     ClearBoxStyle(translate_row);
@@ -1241,7 +1558,7 @@ void Ds02HomeDisplay::CreateSettingsObjects() {
     lv_obj_set_style_border_color(translate_row, Color(0x273241), 0);
     lv_obj_add_flag(translate_row, LV_OBJ_FLAG_CLICKABLE);
     lv_obj_add_event_cb(translate_row, OnSettingsTranslateClicked, LV_EVENT_CLICKED, this);
-    lv_obj_align(translate_row, LV_ALIGN_TOP_MID, 0, 252);
+    lv_obj_align(translate_row, LV_ALIGN_TOP_MID, 0, settings_row_y);
 
     auto* translate_title = lv_label_create(translate_row);
     lv_obj_set_style_text_color(translate_title, Color(0xf8fafc), 0);
@@ -1264,9 +1581,6 @@ void Ds02HomeDisplay::CreateSettingsObjects() {
     lv_label_set_text(translate_chevron, ">");
     lv_obj_align(translate_chevron, LV_ALIGN_RIGHT_MID, -10, 0);
 
-    CreateDevicePickerObjects(root_, g_wifi_device_picker, "Wi-Fi networks",
-                              kWifiDeviceItems.data(), kWifiDeviceItems.size(),
-                              safe_width, safe_height);
     CreateDevicePickerObjects(root_, g_bluetooth_device_picker, "Bluetooth devices",
                               kBluetoothDeviceItems.data(), kBluetoothDeviceItems.size(),
                               safe_width, safe_height);
@@ -1539,6 +1853,86 @@ void Ds02HomeDisplay::CreateOnboardSplashObjects() {
     esp_timer_create(&timer_args, &onboard_splash_timer_);
 }
 
+void Ds02HomeDisplay::CreateWifiConfigPromptObjects() {
+    if (root_ == nullptr) {
+        return;
+    }
+
+    const int safe_width = width_ > 0 ? width_ : 320;
+    const int safe_height = height_ > 0 ? height_ : 240;
+    const int content_width = Clamp(safe_width - 32, 220, 292);
+
+    wifi_config_layer_ = lv_obj_create(root_);
+    lv_obj_set_size(wifi_config_layer_, LV_PCT(100), LV_PCT(100));
+    ClearBoxStyle(wifi_config_layer_);
+    lv_obj_set_style_bg_color(wifi_config_layer_, Color(0x061018), 0);
+    lv_obj_set_style_bg_grad_color(wifi_config_layer_, Color(0x0f172a), 0);
+    lv_obj_set_style_bg_grad_dir(wifi_config_layer_, LV_GRAD_DIR_VER, 0);
+    lv_obj_set_style_bg_opa(wifi_config_layer_, LV_OPA_COVER, 0);
+    lv_obj_add_flag(wifi_config_layer_, LV_OBJ_FLAG_HIDDEN);
+
+    auto* title = lv_label_create(wifi_config_layer_);
+    lv_obj_set_width(title, content_width);
+    lv_obj_set_style_text_align(title, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_set_style_text_color(title, Color(0xf8fafc), 0);
+    lv_obj_set_style_text_font(title, &BUILTIN_TEXT_FONT, 0);
+    lv_label_set_text(title, "Wi-Fi setup");
+    lv_obj_align(title, LV_ALIGN_TOP_MID, 0, std::max(14, safe_height / 10));
+
+    auto* hint = lv_label_create(wifi_config_layer_);
+    lv_obj_set_width(hint, content_width);
+    lv_obj_set_style_text_align(hint, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_set_style_text_color(hint, Color(0x94a3b8), 0);
+    lv_obj_set_style_text_font(hint, &BUILTIN_TEXT_FONT, 0);
+    lv_label_set_long_mode(hint, LV_LABEL_LONG_WRAP);
+    lv_label_set_text(hint, "Vao Wi-Fi cua ban, tim mang:");
+    lv_obj_align(hint, LV_ALIGN_TOP_MID, 0, std::max(40, safe_height / 5));
+
+    wifi_config_ssid_label_ = lv_label_create(wifi_config_layer_);
+    lv_obj_set_width(wifi_config_ssid_label_, content_width);
+    lv_obj_set_style_text_align(wifi_config_ssid_label_, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_set_style_text_color(wifi_config_ssid_label_, Color(0x67e8f9), 0);
+    lv_obj_set_style_text_font(wifi_config_ssid_label_, &BUILTIN_TEXT_FONT, 0);
+    lv_label_set_long_mode(wifi_config_ssid_label_, LV_LABEL_LONG_DOT);
+    lv_label_set_text(wifi_config_ssid_label_, "Ekko-Huynh-Robot");
+    lv_obj_align(wifi_config_ssid_label_, LV_ALIGN_TOP_MID, 0, std::max(64, safe_height / 5 + 22));
+
+    wifi_config_password_label_ = lv_label_create(wifi_config_layer_);
+    lv_obj_set_width(wifi_config_password_label_, content_width);
+    lv_obj_set_style_text_align(wifi_config_password_label_, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_set_style_text_color(wifi_config_password_label_, Color(0xe2e8f0), 0);
+    lv_obj_set_style_text_font(wifi_config_password_label_, &BUILTIN_TEXT_FONT, 0);
+    lv_label_set_long_mode(wifi_config_password_label_, LV_LABEL_LONG_DOT);
+    lv_label_set_text(wifi_config_password_label_, "Pass: 0799888358");
+    lv_obj_align(wifi_config_password_label_, LV_ALIGN_TOP_MID, 0, std::max(88, safe_height / 5 + 46));
+
+    auto* link_hint = lv_label_create(wifi_config_layer_);
+    lv_obj_set_width(link_hint, content_width);
+    lv_obj_set_style_text_align(link_hint, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_set_style_text_color(link_hint, Color(0x94a3b8), 0);
+    lv_obj_set_style_text_font(link_hint, &BUILTIN_TEXT_FONT, 0);
+    lv_label_set_text(link_hint, "Sau do mo link:");
+    lv_obj_align(link_hint, LV_ALIGN_TOP_MID, 0, std::max(122, safe_height / 2));
+
+    wifi_config_url_label_ = lv_label_create(wifi_config_layer_);
+    lv_obj_set_width(wifi_config_url_label_, content_width);
+    lv_obj_set_style_text_align(wifi_config_url_label_, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_set_style_text_color(wifi_config_url_label_, Color(0x6ee7b7), 0);
+    lv_obj_set_style_text_font(wifi_config_url_label_, &BUILTIN_TEXT_FONT, 0);
+    lv_label_set_long_mode(wifi_config_url_label_, LV_LABEL_LONG_WRAP);
+    lv_label_set_text(wifi_config_url_label_, "http://192.168.4.1");
+    lv_obj_align(wifi_config_url_label_, LV_ALIGN_TOP_MID, 0, std::max(144, safe_height / 2 + 22));
+
+    auto* footer = lv_label_create(wifi_config_layer_);
+    lv_obj_set_width(footer, content_width);
+    lv_obj_set_style_text_align(footer, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_set_style_text_color(footer, Color(0x94a3b8), 0);
+    lv_obj_set_style_text_font(footer, &BUILTIN_TEXT_FONT, 0);
+    lv_label_set_long_mode(footer, LV_LABEL_LONG_WRAP);
+    lv_label_set_text(footer, "Trang nay se quet Wi-Fi va luu mat khau vao mach.");
+    lv_obj_align(footer, LV_ALIGN_BOTTOM_MID, 0, -18);
+}
+
 void Ds02HomeDisplay::CreateDockObjects() {
     const int safe_width = width_ > 0 ? width_ : 320;
     const int dock_width = Clamp(safe_width - 28, 220, 292);
@@ -1599,6 +1993,18 @@ void Ds02HomeDisplay::SetStatus(const char* status) {
         return;
     }
 
+    if (TextEquals(status, Lang::Strings::WIFI_CONFIG_MODE)) {
+        DisplayLockGuard lock(this);
+        SetProfileAvatarSpeaking(false);
+        RefreshSettingsPage();
+        return;
+    }
+
+    {
+        DisplayLockGuard lock(this);
+        HideWifiConfigPromptLocked();
+    }
+
     if (TextEquals(status, Lang::Strings::CONNECTING)) {
         {
             DisplayLockGuard lock(this);
@@ -1611,6 +2017,7 @@ void Ds02HomeDisplay::SetStatus(const char* status) {
     if (TextEquals(status, Lang::Strings::LISTENING)) {
         DisplayLockGuard lock(this);
         standby_state_ = StandbyState::Launcher;
+        launcher_view_ = LauncherView::App;
         active_dock_index_ = kProfileDockIndex;
         ApplyDockSelection();
         ApplyStandbyState();
@@ -1650,6 +2057,7 @@ void Ds02HomeDisplay::ShowPureBlack() {
 
 void Ds02HomeDisplay::ShowLauncher() {
     standby_state_ = StandbyState::Launcher;
+    launcher_view_ = LauncherView::Home;
     DisplayLockGuard lock(this);
     ApplyStandbyState();
 }
@@ -1668,11 +2076,40 @@ void Ds02HomeDisplay::ShowOnboardSplash(int duration_ms) {
     }
 }
 
+void Ds02HomeDisplay::ShowWifiConfigPrompt(const char* ssid, const char* password, const char* url) {
+    DisplayLockGuard lock(this);
+    if (wifi_config_layer_ == nullptr) {
+        return;
+    }
+
+    const std::string ssid_text = ssid != nullptr && ssid[0] != '\0'
+        ? ssid
+        : "Ekko-Huynh-Robot";
+    const std::string password_text = std::string("Pass: ") +
+        (password != nullptr && password[0] != '\0' ? password : kWifiConfigPassword);
+    const std::string url_text = url != nullptr && url[0] != '\0'
+        ? url
+        : "http://192.168.4.1";
+
+    SetCachedText(wifi_config_ssid_label_, cached_wifi_config_ssid_, ssid_text);
+    SetCachedText(wifi_config_password_label_, cached_wifi_config_password_, password_text);
+    SetCachedText(wifi_config_url_label_, cached_wifi_config_url_, url_text);
+    SetVisible(wifi_config_layer_, true);
+    lv_obj_move_foreground(wifi_config_layer_);
+    RefreshSettingsPage();
+}
+
+void Ds02HomeDisplay::HideWifiConfigPrompt() {
+    DisplayLockGuard lock(this);
+    HideWifiConfigPromptLocked();
+}
+
 void Ds02HomeDisplay::AdvanceStandbyButtonState() {
     if (standby_state_ == StandbyState::Dim) {
         standby_state_ = StandbyState::Awake;
     } else if (standby_state_ == StandbyState::Awake) {
         standby_state_ = StandbyState::Launcher;
+        launcher_view_ = LauncherView::Home;
     } else {
         standby_state_ = StandbyState::Dim;
     }
@@ -1683,6 +2120,7 @@ void Ds02HomeDisplay::AdvanceStandbyButtonState() {
 void Ds02HomeDisplay::WakeFromWakeWord(const char* wake_word) {
     (void)wake_word;
     standby_state_ = StandbyState::Launcher;
+    launcher_view_ = LauncherView::App;
     active_dock_index_ = kProfileDockIndex;
     DisplayLockGuard lock(this);
     ApplyDockSelection();
@@ -1692,6 +2130,7 @@ void Ds02HomeDisplay::WakeFromWakeWord(const char* wake_word) {
 void Ds02HomeDisplay::SetProfileVoiceActive(bool active) {
     DisplayLockGuard lock(this);
     SetProfileAvatarSpeaking(active && standby_state_ == StandbyState::Launcher &&
+                             launcher_view_ == LauncherView::App &&
                              active_dock_index_ == kProfileDockIndex);
 }
 
@@ -1725,6 +2164,10 @@ void Ds02HomeDisplay::ApplyStandbyState() {
 
 void Ds02HomeDisplay::HideOnboardSplash() {
     SetVisible(onboard_splash_layer_, false);
+}
+
+void Ds02HomeDisplay::HideWifiConfigPromptLocked() {
+    SetVisible(wifi_config_layer_, false);
 }
 
 void Ds02HomeDisplay::UpdateStatusBar(bool update_all) {
@@ -1953,6 +2396,7 @@ void Ds02HomeDisplay::RefreshSettingsPage() {
     if (background_index_ >= kBackgroundItems.size()) {
         background_index_ = 0;
     }
+    SetCachedText(settings_wifi_value_label_, cached_settings_wifi_, WifiSettingsValue());
     SetCachedText(settings_wake_sound_value_label_, cached_settings_wake_sound_,
                   WakeSoundSettings::Label(WakeSoundSettings::LoadIndex()));
     SetCachedText(settings_background_value_label_, cached_settings_background_,
@@ -1962,7 +2406,6 @@ void Ds02HomeDisplay::RefreshSettingsPage() {
     SetCachedText(settings_text_color_value_label_, cached_settings_text_color_, color_text);
     SetCachedText(settings_translate_value_label_, cached_settings_translate_, TranslateModeLabel());
     RefreshTranslateLabels();
-    RefreshDevicePicker(g_wifi_device_picker);
     RefreshDevicePicker(g_bluetooth_device_picker);
     RefreshWakeSoundPicker();
 }
@@ -2017,14 +2460,28 @@ void Ds02HomeDisplay::RefreshBackgroundGallery() {
 }
 
 void Ds02HomeDisplay::RefreshLauncherPage(bool force) {
-    const bool calendar_active = active_dock_index_ == 0;
-    const bool profile_active = active_dock_index_ == kProfileDockIndex;
-    const bool settings_active = active_dock_index_ == kSettingsDockIndex;
+    const bool home_active = launcher_view_ == LauncherView::Home;
+    const bool drawer_active = launcher_view_ == LauncherView::Drawer;
+    const bool calendar_active = launcher_view_ == LauncherView::Calendar;
+    const bool app_active = launcher_view_ == LauncherView::App;
+    const bool profile_active = app_active && active_dock_index_ == kProfileDockIndex;
+    const bool settings_active = app_active && active_dock_index_ == kSettingsDockIndex;
+    const bool generic_app_active = app_active && !profile_active && !settings_active;
+
+    SetVisible(launcher_home_, home_active);
+    SetVisible(app_drawer_, drawer_active);
+    SetVisible(app_back_button_, app_active);
+    SetVisible(dock_, false);
     SetVisible(calendar_root_, calendar_active);
     SetVisible(profile_avatar_root_, profile_active);
     SetVisible(settings_root_, settings_active);
-    SetVisible(launcher_title_label_, !calendar_active && !profile_active && !settings_active);
-    SetVisible(launcher_body_label_, !calendar_active && !profile_active && !settings_active);
+    SetVisible(settings_header_title_label_, settings_active);
+    SetVisible(launcher_title_label_, generic_app_active);
+    SetVisible(launcher_body_label_, generic_app_active);
+
+    if (!profile_active) {
+        SetProfileAvatarSpeaking(false);
+    }
 
     if (calendar_active) {
         RefreshCalendar(force);
@@ -2041,7 +2498,7 @@ void Ds02HomeDisplay::RefreshLauncherPage(bool force) {
         return;
     }
 
-    if (active_dock_index_ >= kDockItems.size()) {
+    if (!generic_app_active || active_dock_index_ >= kDockItems.size()) {
         return;
     }
 
@@ -2049,8 +2506,53 @@ void Ds02HomeDisplay::RefreshLauncherPage(bool force) {
     SetCachedText(launcher_body_label_, cached_launcher_body_, kDockItems[active_dock_index_].body);
 }
 
+void Ds02HomeDisplay::ApplyAppDrawerStyle() {
+    const bool light = IsLightTheme(current_theme_);
+
+    for (size_t i = 0; i < app_grid_buttons_.size(); ++i) {
+        auto* icon_box = app_grid_icon_boxes_[i];
+        auto* icon = app_grid_icon_labels_[i];
+        auto* title = app_grid_title_labels_[i];
+
+        if (icon_box != nullptr) {
+            lv_obj_set_style_bg_color(icon_box, Color(0xffffff), 0);
+            lv_obj_set_style_bg_opa(icon_box, LV_OPA_90, 0);
+            lv_obj_set_style_border_color(icon_box, Color(0xcbd5e1), 0);
+            lv_obj_set_style_shadow_color(icon_box, Color(0x0f172a), 0);
+            lv_obj_set_style_shadow_opa(icon_box, LV_OPA_20, 0);
+        }
+        if (icon != nullptr) {
+            lv_obj_set_style_text_color(icon, Color(0x475569), 0);
+        }
+        if (title != nullptr) {
+            lv_obj_set_style_text_color(title, Color(0x334155), 0);
+        }
+    }
+
+    if (launcher_title_label_ != nullptr) {
+        lv_obj_set_style_text_color(launcher_title_label_, light ? Color(0x0f172a) : Color(0xffffff), 0);
+    }
+    if (launcher_body_label_ != nullptr) {
+        lv_obj_set_style_text_color(launcher_body_label_, light ? Color(0x475569) : Color(0xa9b2bd), 0);
+    }
+    if (settings_header_title_label_ != nullptr) {
+        lv_obj_set_style_text_color(settings_header_title_label_, light ? Color(0x0f172a) : Color(0xf8fafc), 0);
+    }
+
+    if (app_back_button_ != nullptr) {
+        lv_obj_set_style_bg_color(app_back_button_, light ? Color(0xffffff) : Color(0x0f172a), 0);
+        lv_obj_set_style_bg_opa(app_back_button_, LV_OPA_80, 0);
+        lv_obj_set_style_border_color(app_back_button_, light ? Color(0xcbd5e1) : Color(0x334155), 0);
+        lv_obj_set_style_shadow_color(app_back_button_, Color(0x0f172a), 0);
+        lv_obj_set_style_shadow_opa(app_back_button_, light ? LV_OPA_20 : LV_OPA_40, 0);
+    }
+    if (app_back_label_ != nullptr) {
+        lv_obj_set_style_text_color(app_back_label_, light ? Color(0x0f172a) : Color(0xf8fafc), 0);
+    }
+}
+
 void Ds02HomeDisplay::SelectDockItem(size_t index) {
-    if (index >= dock_buttons_.size() || active_dock_index_ == index) {
+    if (index >= kDockItems.size()) {
         return;
     }
     if (index != kSettingsDockIndex) {
@@ -2058,7 +2560,42 @@ void Ds02HomeDisplay::SelectDockItem(size_t index) {
         CloseWakeSoundPicker();
         CloseBackgroundGallery();
     }
+    ShowAppDetail(index);
+}
+
+void Ds02HomeDisplay::ShowLauncherHome() {
+    launcher_view_ = LauncherView::Home;
+    CloseAllDevicePickers();
+    CloseWakeSoundPicker();
+    CloseBackgroundGallery();
+    SetProfileAvatarSpeaking(false);
+    RefreshLauncherPage(true);
+}
+
+void Ds02HomeDisplay::ShowAppDrawer() {
+    launcher_view_ = LauncherView::Drawer;
+    CloseAllDevicePickers();
+    CloseWakeSoundPicker();
+    CloseBackgroundGallery();
+    SetProfileAvatarSpeaking(false);
+    RefreshLauncherPage(true);
+}
+
+void Ds02HomeDisplay::ShowCalendar() {
+    launcher_view_ = LauncherView::Calendar;
+    CloseAllDevicePickers();
+    CloseWakeSoundPicker();
+    CloseBackgroundGallery();
+    SetProfileAvatarSpeaking(false);
+    RefreshLauncherPage(true);
+}
+
+void Ds02HomeDisplay::ShowAppDetail(size_t index) {
+    if (index >= kDockItems.size()) {
+        return;
+    }
     active_dock_index_ = index;
+    launcher_view_ = LauncherView::App;
     ApplyDockSelection();
     RefreshLauncherPage(true);
 }
@@ -2277,9 +2814,17 @@ void Ds02HomeDisplay::ApplyThemeColors(Theme* theme) {
         lv_obj_set_style_bg_color(root_, screen_background, 0);
     }
     if (launcher_layer_ != nullptr) {
-        lv_obj_set_style_bg_color(launcher_layer_, screen_background, 0);
+        lv_obj_set_style_bg_color(launcher_layer_, light ? Color(0xf4f6fb) : screen_background, 0);
         lv_obj_set_style_bg_opa(launcher_layer_, LV_OPA_COVER, 0);
         lv_obj_set_style_text_color(launcher_layer_, status_text, 0);
+    }
+    if (launcher_home_ != nullptr) {
+        lv_obj_set_style_bg_color(launcher_home_, Color(0xf4f6fb), 0);
+        lv_obj_set_style_bg_opa(launcher_home_, LV_OPA_COVER, 0);
+    }
+    if (app_drawer_ != nullptr) {
+        lv_obj_set_style_bg_color(app_drawer_, Color(0xf4f6fb), 0);
+        lv_obj_set_style_bg_opa(app_drawer_, LV_OPA_COVER, 0);
     }
     if (profile_avatar_root_ != nullptr) {
         lv_obj_set_style_bg_color(profile_avatar_root_, screen_background, 0);
@@ -2311,6 +2856,7 @@ void Ds02HomeDisplay::ApplyThemeColors(Theme* theme) {
     if (calendar_root_ != nullptr) {
         RefreshCalendar(true);
     }
+    ApplyAppDrawerStyle();
     ApplyDockSelection();
 }
 
@@ -2362,6 +2908,7 @@ void Ds02HomeDisplay::ApplyTextColor() {
     RefreshNetwork();
     RefreshBattery();
     RefreshBluetooth();
+    ApplyAppDrawerStyle();
     ApplyDockSelection();
 }
 
@@ -2557,6 +3104,82 @@ void Ds02HomeDisplay::OnOnboardSplashTimer(void* arg) {
     display->HideOnboardSplash();
 }
 
+void Ds02HomeDisplay::OnLauncherHomeGesture(lv_event_t* event) {
+    auto* display = static_cast<Ds02HomeDisplay*>(lv_event_get_user_data(event));
+    if (display == nullptr) {
+        return;
+    }
+
+    auto* indev = lv_indev_active();
+    if (indev == nullptr) {
+        return;
+    }
+
+    const auto direction = lv_indev_get_gesture_dir(indev);
+    if (direction == LV_DIR_RIGHT) {
+        display->ShowAppDrawer();
+    } else if (direction == LV_DIR_LEFT) {
+        display->ShowCalendar();
+    }
+}
+
+void Ds02HomeDisplay::OnAppDrawerGesture(lv_event_t* event) {
+    auto* display = static_cast<Ds02HomeDisplay*>(lv_event_get_user_data(event));
+    if (display == nullptr) {
+        return;
+    }
+
+    auto* indev = lv_indev_active();
+    if (indev == nullptr) {
+        return;
+    }
+
+    if (lv_indev_get_gesture_dir(indev) == LV_DIR_LEFT) {
+        display->ShowLauncherHome();
+    }
+}
+
+void Ds02HomeDisplay::OnCalendarGesture(lv_event_t* event) {
+    auto* display = static_cast<Ds02HomeDisplay*>(lv_event_get_user_data(event));
+    if (display == nullptr) {
+        return;
+    }
+
+    auto* indev = lv_indev_active();
+    if (indev == nullptr) {
+        return;
+    }
+
+    if (lv_indev_get_gesture_dir(indev) == LV_DIR_RIGHT) {
+        display->ShowLauncherHome();
+    }
+}
+
+void Ds02HomeDisplay::OnAppDrawerItemClicked(lv_event_t* event) {
+    auto* display = static_cast<Ds02HomeDisplay*>(lv_event_get_user_data(event));
+    if (display == nullptr) {
+        return;
+    }
+
+    auto* target = static_cast<lv_obj_t*>(lv_event_get_target(event));
+    for (size_t i = 0; i < display->app_grid_buttons_.size(); ++i) {
+        auto* button = display->app_grid_buttons_[i];
+        if (button != nullptr && IsObjectOrDescendant(target, button)) {
+            display->SelectDockItem(i);
+            return;
+        }
+    }
+}
+
+void Ds02HomeDisplay::OnAppBackClicked(lv_event_t* event) {
+    auto* display = static_cast<Ds02HomeDisplay*>(lv_event_get_user_data(event));
+    if (display == nullptr) {
+        return;
+    }
+
+    display->ShowAppDrawer();
+}
+
 void Ds02HomeDisplay::OnDockButtonClicked(lv_event_t* event) {
     auto* display = static_cast<Ds02HomeDisplay*>(lv_event_get_user_data(event));
     if (display == nullptr) {
@@ -2570,6 +3193,20 @@ void Ds02HomeDisplay::OnDockButtonClicked(lv_event_t* event) {
             return;
         }
     }
+}
+
+void Ds02HomeDisplay::OnSettingsWifiClicked(lv_event_t* event) {
+    auto* display = static_cast<Ds02HomeDisplay*>(lv_event_get_user_data(event));
+    if (display == nullptr) {
+        return;
+    }
+
+    Application::GetInstance().Schedule([]() {
+        auto& board = Board::GetInstance();
+        if (!board.RequestWifiConfigMode()) {
+            board.GetDisplay()->ShowNotification("Wi-Fi setup is not available");
+        }
+    });
 }
 
 void Ds02HomeDisplay::OnSettingsWakeSoundClicked(lv_event_t* event) {

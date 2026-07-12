@@ -29,6 +29,7 @@ rm -rf "$PRJ/scripts" "$PRJ/main"
 cp -a "$SRC/scripts" "$PRJ/scripts"
 cp -a "$SRC" "$PRJ/main"
 rm -rf "$PRJ/main/.git"
+rm -f "$PRJ/sdkconfig" "$PRJ/sdkconfig.old"
 
 DEFAULTS="sdkconfig.defaults;sdkconfig.defaults.esp32s3;sdkconfig.board.esp-box-3"
 

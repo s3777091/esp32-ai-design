@@ -41,7 +41,6 @@ MCP Tool：
 self.get_device_status
 self.audio_speaker.set_volume
 self.screen.set_brightness
-self.screen.set_theme
 self.gif.set_gif_mode
 self.display.set_mode
 self.camera.take_photo       

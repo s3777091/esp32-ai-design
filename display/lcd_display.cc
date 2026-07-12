@@ -1,6 +1,5 @@
 #include "lcd_display.h"
 #include "gif/lvgl_gif.h"
-#include "settings.h"
 #include "lvgl_theme.h"
 #include "assets/lang_config.h"
 
@@ -27,22 +26,6 @@ void LcdDisplay::InitializeLcdThemes() {
     auto icon_font = std::make_shared<LvglBuiltInFont>(&BUILTIN_ICON_FONT);
     auto large_icon_font = std::make_shared<LvglBuiltInFont>(&font_awesome_30_4);
 
-    // light theme
-    auto light_theme = new LvglTheme("light");
-    light_theme->set_background_color(lv_color_hex(0xFFFFFF));
-    light_theme->set_text_color(lv_color_hex(0x000000));
-    light_theme->set_chat_background_color(lv_color_hex(0xE0E0E0));
-    light_theme->set_user_bubble_color(lv_color_hex(0x00FF00));
-    light_theme->set_assistant_bubble_color(lv_color_hex(0xDDDDDD));
-    light_theme->set_system_bubble_color(lv_color_hex(0xFFFFFF));
-    light_theme->set_system_text_color(lv_color_hex(0x000000));
-    light_theme->set_border_color(lv_color_hex(0x000000));
-    light_theme->set_low_battery_color(lv_color_hex(0x000000));
-    light_theme->set_text_font(text_font);
-    light_theme->set_icon_font(icon_font);
-    light_theme->set_large_icon_font(large_icon_font);
-
-    // dark theme
     auto dark_theme = new LvglTheme("dark");
     dark_theme->set_background_color(lv_color_hex(0x000000));
     dark_theme->set_text_color(lv_color_hex(0xFFFFFF));
@@ -58,7 +41,6 @@ void LcdDisplay::InitializeLcdThemes() {
     dark_theme->set_large_icon_font(large_icon_font);
 
     auto& theme_manager = LvglThemeManager::GetInstance();
-    theme_manager.RegisterTheme("light", light_theme);
     theme_manager.RegisterTheme("dark", dark_theme);
 }
 
@@ -70,10 +52,7 @@ LcdDisplay::LcdDisplay(esp_lcd_panel_io_handle_t panel_io, esp_lcd_panel_handle_
     // Initialize LCD themes
     InitializeLcdThemes();
 
-    // Load theme from settings
-    Settings settings("display", false);
-    std::string theme_name = settings.GetString("theme", "light");
-    current_theme_ = LvglThemeManager::GetInstance().GetTheme(theme_name);
+    current_theme_ = LvglThemeManager::GetInstance().GetTheme("dark");
 
     // Create a timer to hide the preview image
     esp_timer_create_args_t preview_timer_args = {

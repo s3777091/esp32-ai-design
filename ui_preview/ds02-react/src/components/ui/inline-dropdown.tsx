@@ -8,7 +8,6 @@ import {
   ChevronRight,
   Image,
   Languages,
-  Mic2,
   Moon,
   Palette,
   Sun,
@@ -17,7 +16,6 @@ import {
   WifiOff,
 } from "lucide-react";
 
-import { DS02_WAKE_WORD } from "@/lib/ds02-config";
 import { cn } from "@/lib/utils";
 
 export type Ds02Theme = "light" | "dark";
@@ -25,8 +23,7 @@ export type Ds02Theme = "light" | "dark";
 export interface Ds02SettingsPanelProps {
   offline: boolean;
   wifiDeviceName: string;
-  onChooseWifiDevice: () => void;
-  onToggleWifi: () => void;
+  onConfigureWifi: () => void;
   bluetoothAvailable: boolean | null;
   bluetoothDeviceName: string;
   onChooseBluetoothDevice: () => void;
@@ -37,7 +34,6 @@ export interface Ds02SettingsPanelProps {
   onBrightnessChange: (value: number) => void;
   theme: Ds02Theme;
   onToggleTheme: () => void;
-  wakeWordName: string;
   wakeSoundName: string;
   onChangeWakeSound: () => void;
   backgroundName: string;
@@ -51,8 +47,7 @@ export interface Ds02SettingsPanelProps {
 export function Ds02SettingsPanel({
   offline,
   wifiDeviceName,
-  onChooseWifiDevice,
-  onToggleWifi,
+  onConfigureWifi,
   bluetoothAvailable,
   bluetoothDeviceName,
   onChooseBluetoothDevice,
@@ -63,7 +58,6 @@ export function Ds02SettingsPanel({
   onBrightnessChange,
   theme,
   onToggleTheme,
-  wakeWordName,
   wakeSoundName,
   onChangeWakeSound,
   backgroundName,
@@ -83,19 +77,7 @@ export function Ds02SettingsPanel({
         isLight ? "bg-[#f4f6fb] text-slate-950" : "bg-[#050609] text-white"
       )}
     >
-      <div className="mb-2 px-1">
-        <div>
-          <div className="text-[18px] font-semibold leading-none">Settings</div>
-          <div
-            className={cn(
-              "mt-1 text-[10px] font-medium leading-none",
-              isLight ? "text-slate-500" : "text-white/45"
-            )}
-          >
-            Runtime preview
-          </div>
-        </div>
-      </div>
+      <div className="h-10" aria-hidden="true" />
 
       <SettingsGroup theme={theme}>
         <SettingRow
@@ -103,19 +85,9 @@ export function Ds02SettingsPanel({
           icon={offline ? <WifiOff size={15} /> : <Wifi size={15} />}
           iconClassName={offline ? "bg-rose-500" : "bg-sky-500"}
           title="Wi-Fi"
-          detail={offline ? "Disconnected" : wifiDeviceName}
-          onClick={onChooseWifiDevice}
-          control={
-            <span className="flex shrink-0 items-center gap-1">
-              <MiniSwitch
-                theme={theme}
-                checked={!offline}
-                onClick={onToggleWifi}
-                label="Toggle Wi-Fi"
-              />
-              <ChevronRight size={13} aria-hidden />
-            </span>
-          }
+          detail={offline ? "Setup required" : wifiDeviceName}
+          onClick={onConfigureWifi}
+          value={<ChevronRight size={14} aria-hidden />}
         />
         <SettingRow
           theme={theme}
@@ -181,14 +153,6 @@ export function Ds02SettingsPanel({
       </SettingsGroup>
 
       <SettingsGroup theme={theme}>
-        <SettingRow
-          theme={theme}
-          icon={<Mic2 size={15} />}
-          iconClassName="bg-cyan-500"
-          title="Wake word"
-          detail={wakeWordName}
-          value="active"
-        />
         <SettingRow
           theme={theme}
           icon={<BellRing size={15} />}
@@ -286,8 +250,7 @@ export const Component = () => {
       <Ds02SettingsPanel
         offline={offline}
         wifiDeviceName="Ekko Home 5G"
-        onChooseWifiDevice={() => setOffline(false)}
-        onToggleWifi={() => setOffline((value) => !value)}
+        onConfigureWifi={() => setOffline(true)}
         bluetoothAvailable={bluetoothAvailable}
         bluetoothDeviceName="Ekko Buds"
         onChooseBluetoothDevice={() => setBluetoothAvailable(true)}
@@ -298,7 +261,6 @@ export const Component = () => {
         onBrightnessChange={setBrightness}
         theme={theme}
         onToggleTheme={() => setTheme((value) => (value === "light" ? "dark" : "light"))}
-        wakeWordName={DS02_WAKE_WORD}
         wakeSoundName={wakeSounds[wakeSoundIndex]}
         onChangeWakeSound={() =>
           setWakeSoundIndex((value) => (value + 1) % wakeSounds.length)

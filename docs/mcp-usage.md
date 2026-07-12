@@ -104,7 +104,6 @@ A tool registered this way will not appear in a regular `tools/list` response. T
 | `self.get_device_status` | Returns the current volume, screen, battery, network, etc. |
 | `self.audio_speaker.set_volume` | Set speaker volume (`volume`: 0-100). |
 | `self.screen.set_brightness` | Set screen brightness when a backlight is available (`brightness`: 0-100). |
-| `self.screen.set_theme` | Switch UI theme (`theme`: `"light"` or `"dark"`), when LVGL is enabled. |
 | `self.camera.take_photo` | Take a picture with the on-board camera (when the board has one) and answer the given `question` about it. |
 
 Board-specific tools are appended after these by each board's `InitializeTools()`.

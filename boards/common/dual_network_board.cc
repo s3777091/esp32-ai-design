@@ -81,6 +81,10 @@ NetworkInterface* DualNetworkBoard::GetNetwork() {
     return current_board_->GetNetwork();
 }
 
+bool DualNetworkBoard::RequestWifiConfigMode() {
+    return current_board_->RequestWifiConfigMode();
+}
+
 const char* DualNetworkBoard::GetNetworkStateIcon() {
     return current_board_->GetNetworkStateIcon();
 }

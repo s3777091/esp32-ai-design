@@ -236,7 +236,6 @@ bool Assets::LvglStrategy::Apply(Assets* assets, bool refresh_display_theme) {
     Assets::LoadSrmodelsFromIndex(assets, root);
 
     auto& theme_manager = LvglThemeManager::GetInstance();
-    auto light_theme = theme_manager.GetTheme("light");
     auto dark_theme = theme_manager.GetTheme("dark");
 
     cJSON* font = cJSON_GetObjectItem(root, "text_font");
@@ -247,9 +246,6 @@ bool Assets::LvglStrategy::Apply(Assets* assets, bool refresh_display_theme) {
             if (text_font->font() == nullptr) {
                 ESP_LOGE(TAG, "Failed to load fonts.bin");
                 return false;
-            }
-            if (light_theme != nullptr) {
-                light_theme->set_text_font(text_font);
             }
             if (dark_theme != nullptr) {
                 dark_theme->set_text_font(text_font);
@@ -278,9 +274,6 @@ bool Assets::LvglStrategy::Apply(Assets* assets, bool refresh_display_theme) {
                 }
             }
         }
-        if (light_theme != nullptr) {
-            light_theme->set_emoji_collection(custom_emoji_collection);
-        }
         if (dark_theme != nullptr) {
             dark_theme->set_emoji_collection(custom_emoji_collection);
         }
@@ -288,27 +281,6 @@ bool Assets::LvglStrategy::Apply(Assets* assets, bool refresh_display_theme) {
 
     cJSON* skin = cJSON_GetObjectItem(root, "skin");
     if (cJSON_IsObject(skin)) {
-        cJSON* light_skin = cJSON_GetObjectItem(skin, "light");
-        if (cJSON_IsObject(light_skin) && light_theme != nullptr) {
-            cJSON* text_color = cJSON_GetObjectItem(light_skin, "text_color");
-            cJSON* background_color = cJSON_GetObjectItem(light_skin, "background_color");
-            cJSON* background_image = cJSON_GetObjectItem(light_skin, "background_image");
-            if (cJSON_IsString(text_color)) {
-                light_theme->set_text_color(LvglTheme::ParseColor(text_color->valuestring));
-            }
-            if (cJSON_IsString(background_color)) {
-                light_theme->set_background_color(LvglTheme::ParseColor(background_color->valuestring));
-                light_theme->set_chat_background_color(LvglTheme::ParseColor(background_color->valuestring));
-            }
-            if (cJSON_IsString(background_image)) {
-                if (!assets->GetAssetData(background_image->valuestring, ptr, size)) {
-                    ESP_LOGE(TAG, "The background image file %s is not found", background_image->valuestring);
-                    return false;
-                }
-                auto background_image = std::make_shared<LvglCBinImage>(ptr);
-                light_theme->set_background_image(background_image);
-            }
-        }
         cJSON* dark_skin = cJSON_GetObjectItem(skin, "dark");
         if (cJSON_IsObject(dark_skin) && dark_theme != nullptr) {
             cJSON* text_color = cJSON_GetObjectItem(dark_skin, "text_color");

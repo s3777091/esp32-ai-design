@@ -784,7 +784,7 @@ config USE_DS02_HOME_UI
 
 choice WAKE_WORD_TYPE
     prompt "Wake Word Implementation Type"
-    default USE_CUSTOM_WAKE_WORD if USE_DS02_HOME_UI && (IDF_TARGET_ESP32S3 || IDF_TARGET_ESP32P4) && SPIRAM
+    default WAKE_WORD_DISABLED if USE_DS02_HOME_UI
     default USE_AFE_WAKE_WORD if (IDF_TARGET_ESP32S3 || IDF_TARGET_ESP32P4) && SPIRAM
     default WAKE_WORD_DISABLED
     help

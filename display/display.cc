@@ -9,7 +9,6 @@
 #include "board.h"
 #include "application.h"
 #include "audio_codec.h"
-#include "settings.h"
 #include "assets/lang_config.h"
 
 #define TAG "Display"
@@ -32,6 +31,16 @@ void Display::ShowNotification(const char* notification, int duration_ms) {
     ESP_LOGW(TAG, "ShowNotification: %s", notification);
 }
 
+void Display::ShowWifiConfigPrompt(const char* ssid, const char* password, const char* url) {
+    ESP_LOGW(TAG, "ShowWifiConfigPrompt: ssid=%s password_set=%d url=%s",
+             ssid != nullptr ? ssid : "",
+             password != nullptr && password[0] != '\0',
+             url != nullptr ? url : "");
+}
+
+void Display::HideWifiConfigPrompt() {
+}
+
 void Display::UpdateStatusBar(bool update_all) {
 }
 
@@ -51,8 +60,6 @@ void Display::ClearChatMessages() {
 
 void Display::SetTheme(Theme* theme) {
     current_theme_ = theme;
-    Settings settings("display", true);
-    settings.SetString("theme", theme->name());
 }
 
 void Display::SetPowerSaveMode(bool on) {

@@ -1,5 +1,17 @@
-import { useEffect, useRef, useState } from "react";
-import { Check, ChevronLeft, ChevronRight, X } from "lucide-react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
+import {
+  ArrowLeft,
+  BookOpen,
+  Check,
+  ChevronLeft,
+  ChevronRight,
+  Languages,
+  Mic2,
+  Music,
+  Settings,
+  Terminal,
+  X,
+} from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
@@ -8,12 +20,57 @@ import {
   type Ds02Theme,
   type Ds02SettingsPanelProps,
 } from "@/components/ui/inline-dropdown";
-import TiltedDock from "@/components/ui/tilted-dock";
-import { DS02_WAKE_WORD } from "@/lib/ds02-config";
 import "./ds02.css";
 
 type ScreenState = "dim" | "awake" | "black";
 type TranslateSide = "center" | "left" | "right";
+type LauncherSurface = "home" | "drawer" | "calendar";
+
+type VoiceMessage = {
+  id: number;
+  text: string;
+  role: "user" | "bot";
+};
+
+type SpeechRecognitionAlternativeLike = {
+  transcript: string;
+};
+
+type SpeechRecognitionResultLike = {
+  isFinal: boolean;
+  length: number;
+  [index: number]: SpeechRecognitionAlternativeLike;
+};
+
+type SpeechRecognitionResultListLike = {
+  length: number;
+  [index: number]: SpeechRecognitionResultLike;
+};
+
+type SpeechRecognitionEventLike = {
+  resultIndex: number;
+  results: SpeechRecognitionResultListLike;
+};
+
+type SpeechRecognitionErrorEventLike = {
+  error: string;
+};
+
+type SpeechRecognitionLike = {
+  lang: string;
+  continuous: boolean;
+  interimResults: boolean;
+  maxAlternatives: number;
+  onstart: (() => void) | null;
+  onend: (() => void) | null;
+  onerror: ((event: SpeechRecognitionErrorEventLike) => void) | null;
+  onresult: ((event: SpeechRecognitionEventLike) => void) | null;
+  start: () => void;
+  stop: () => void;
+  abort: () => void;
+};
+
+type SpeechRecognitionConstructor = new () => SpeechRecognitionLike;
 
 interface StateInfo {
   key: ScreenState;
@@ -36,9 +93,9 @@ const STATES: StateInfo[] = [
   },
   {
     key: "black",
-    title: "Device menu",
+    title: "Launcher",
     detail:
-      "Second press opens the black launcher menu; the TiltedDock appears at the bottom of the screen.",
+      "Second press opens the white orb home. Swipe right for apps, or left for the calendar.",
   },
 ];
 
@@ -135,13 +192,6 @@ type DeviceOption = {
   detail: string;
 };
 
-const WIFI_DEVICE_OPTIONS: readonly DeviceOption[] = [
-  { key: "ekko-home-5g", label: "Ekko Home 5G", detail: "Strong signal" },
-  { key: "studio-router", label: "Studio Router", detail: "Secured" },
-  { key: "office-mesh", label: "Office Mesh", detail: "Saved network" },
-  { key: "guest-wifi", label: "Guest Wi-Fi", detail: "Open network" },
-];
-
 const BLUETOOTH_DEVICE_OPTIONS: readonly DeviceOption[] = [
   { key: "ekko-buds", label: "Ekko Buds", detail: "Audio available" },
   { key: "ds02-speaker", label: "DS-02 Speaker", detail: "Nearby" },
@@ -150,11 +200,50 @@ const BLUETOOTH_DEVICE_OPTIONS: readonly DeviceOption[] = [
 ];
 
 const TRANSLATE_MODES = ["Vi <-> Chinese", "Vi <-> En"] as const;
+const WIFI_CONFIG_AP = {
+  ssid: "Ekko-Huynh-Robot",
+  password: "0799888358",
+  url: "http://192.168.4.1",
+} as const;
 
 function getTranslateLanguages(mode: string): [string, string] {
   return mode.toLowerCase().includes("chinese")
     ? ["Vi", "Chinese"]
     : ["Vi", "En"];
+}
+
+function getSpeechRecognitionConstructor() {
+  const speechWindow = window as Window & {
+    SpeechRecognition?: SpeechRecognitionConstructor;
+    webkitSpeechRecognition?: SpeechRecognitionConstructor;
+  };
+
+  return (
+    speechWindow.SpeechRecognition ??
+    speechWindow.webkitSpeechRecognition ??
+    null
+  );
+}
+
+function getVoiceErrorText(error: string) {
+  if (error === "not-allowed" || error === "service-not-allowed") {
+    return "Mic permission is blocked.";
+  }
+  if (error === "no-speech") {
+    return "No speech detected.";
+  }
+  if (error === "audio-capture") {
+    return "Mic is unavailable.";
+  }
+  return "Voice input stopped.";
+}
+
+function getVoiceBotReply(text: string) {
+  if (text.toLocaleLowerCase("vi-VN").includes("chào")) {
+    return "Xin chào.";
+  }
+
+  return "Đã nghe.";
 }
 
 const RINGTONE_AUDIO_MODULES = import.meta.glob<string>(
@@ -317,11 +406,9 @@ export function Ds02Preview() {
   const [batteryCharging, setBatteryCharging] = useState(false);
   const [lowBatteryNoticeVisible, setLowBatteryNoticeVisible] = useState(false);
   const [btAvailable, setBtAvailable] = useState<boolean | null>(null);
-  const [wifiDeviceIndex, setWifiDeviceIndex] = useState(0);
   const [bluetoothDeviceIndex, setBluetoothDeviceIndex] = useState(0);
-  const [devicePicker, setDevicePicker] = useState<"wifi" | "bluetooth" | null>(
-    null
-  );
+  const [devicePicker, setDevicePicker] = useState<"bluetooth" | null>(null);
+  const [wifiSetupOpen, setWifiSetupOpen] = useState(false);
   const [previewVolume, setPreviewVolume] = useState(70);
   const [previewBrightness, setPreviewBrightness] = useState(75);
   const [previewTheme, setPreviewTheme] = useState<Ds02Theme>("light");
@@ -337,6 +424,25 @@ export function Ds02Preview() {
   const [textStyleOpen, setTextStyleOpen] = useState(false);
   const [translateModeIndex, setTranslateModeIndex] = useState(0);
   const [translateSide, setTranslateSide] = useState<TranslateSide>("center");
+  const [launcherSurface, setLauncherSurface] =
+    useState<LauncherSurface>("home");
+  const [activeAppId, setActiveAppId] = useState<number | null>(null);
+  const [translatePanelActive, setTranslatePanelActive] = useState(false);
+  const [translatePanelClosing, setTranslatePanelClosing] = useState(false);
+  const [voicePanelActive, setVoicePanelActive] = useState(false);
+  const [voiceListening, setVoiceListening] = useState(false);
+  const [voiceInterimText, setVoiceInterimText] = useState("");
+  const [voiceErrorText, setVoiceErrorText] = useState("");
+  const [voiceMessages, setVoiceMessages] = useState<VoiceMessage[]>([]);
+  const launcherPointerStartXRef = useRef<number | null>(null);
+  const launcherPointerIdRef = useRef<number | null>(null);
+  const suppressLauncherClickRef = useRef(false);
+  const translateLastTapAtRef = useRef(0);
+  const translateOpenFrameRef = useRef<number | null>(null);
+  const translateCloseTimerRef = useRef<number | null>(null);
+  const voiceLastTapAtRef = useRef(0);
+  const voiceRecognitionRef = useRef<SpeechRecognitionLike | null>(null);
+  const voiceMessageIdRef = useRef(0);
   const ringtoneAudioRef = useRef<HTMLAudioElement | null>(null);
   const ringtonePreviewTimerRef = useRef<number | null>(null);
 
@@ -457,18 +563,39 @@ export function Ds02Preview() {
     };
   }, []);
 
+  useEffect(() => {
+    return () => {
+      if (voiceRecognitionRef.current) {
+        voiceRecognitionRef.current.onstart = null;
+        voiceRecognitionRef.current.onend = null;
+        voiceRecognitionRef.current.onerror = null;
+        voiceRecognitionRef.current.onresult = null;
+        voiceRecognitionRef.current.abort();
+        voiceRecognitionRef.current = null;
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (translateOpenFrameRef.current !== null) {
+        window.cancelAnimationFrame(translateOpenFrameRef.current);
+      }
+      if (translateCloseTimerRef.current !== null) {
+        window.clearTimeout(translateCloseTimerRef.current);
+      }
+    };
+  }, []);
+
   const state = STATES[stateIndex];
   const showDock = state.key === "black";
   const textFont = TEXT_FONTS[textFontIndex] ?? TEXT_FONTS[0];
   const textPaint = TEXT_PAINTS[textPaintIndex] ?? TEXT_PAINTS[0];
   const translateMode = TRANSLATE_MODES[translateModeIndex] ?? TRANSLATE_MODES[0];
   const wakeSound = WAKE_SOUNDS[wakeSoundIndex] ?? WAKE_SOUNDS[0];
-  const wifiDevice = WIFI_DEVICE_OPTIONS[wifiDeviceIndex] ?? WIFI_DEVICE_OPTIONS[0];
   const bluetoothDevice =
     BLUETOOTH_DEVICE_OPTIONS[bluetoothDeviceIndex] ?? BLUETOOTH_DEVICE_OPTIONS[0];
-  const [activeTab, setActiveTab] = useState(1); // 1 = Home
   const pressBoot = () => setStateIndex((i) => (i + 1) % STATES.length);
-  const togglePreviewWifi = () => setOffline((value) => !value);
   const togglePreviewBluetooth = () => {
     setBtAvailable((value) => !(value ?? false));
   };
@@ -480,6 +607,7 @@ export function Ds02Preview() {
   };
   const openWakeSoundPicker = () => {
     setDevicePicker(null);
+    setWifiSetupOpen(false);
     setBackgroundGalleryOpen(false);
     setTextStyleOpen(false);
     setWakeSoundPickerOpen(true);
@@ -541,6 +669,7 @@ export function Ds02Preview() {
   const openBackgroundGallery = () => {
     stopWakeSoundPreview();
     setDevicePicker(null);
+    setWifiSetupOpen(false);
     setWakeSoundPickerOpen(false);
     setTextStyleOpen(false);
     setBackgroundGalleryOpen(true);
@@ -551,6 +680,7 @@ export function Ds02Preview() {
   const openTextStyle = () => {
     stopWakeSoundPreview();
     setDevicePicker(null);
+    setWifiSetupOpen(false);
     setWakeSoundPickerOpen(false);
     setBackgroundGalleryOpen(false);
     setTextStyleOpen(true);
@@ -563,22 +693,28 @@ export function Ds02Preview() {
       (value) => (value + direction + BACKGROUNDS.length) % BACKGROUNDS.length
     );
   };
-  const openDevicePicker = (kind: "wifi" | "bluetooth") => {
+  const openDevicePicker = (kind: "bluetooth") => {
     stopWakeSoundPreview();
+    setWifiSetupOpen(false);
     setWakeSoundPickerOpen(false);
     setBackgroundGalleryOpen(false);
     setTextStyleOpen(false);
     setDevicePicker(kind);
   };
+  const openWifiSetup = () => {
+    stopWakeSoundPreview();
+    setDevicePicker(null);
+    setWakeSoundPickerOpen(false);
+    setBackgroundGalleryOpen(false);
+    setTextStyleOpen(false);
+    setOffline(true);
+    setWifiSetupOpen(true);
+  };
+  const closeWifiSetup = () => setWifiSetupOpen(false);
   const closeDevicePicker = () => setDevicePicker(null);
-  const selectDevice = (kind: "wifi" | "bluetooth", index: number) => {
-    if (kind === "wifi") {
-      setWifiDeviceIndex(index);
-      setOffline(false);
-    } else {
-      setBluetoothDeviceIndex(index);
-      setBtAvailable(true);
-    }
+  const selectDevice = (index: number) => {
+    setBluetoothDeviceIndex(index);
+    setBtAvailable(true);
     setDevicePicker(null);
   };
   const forceLowBattery = () => {
@@ -586,6 +722,265 @@ export function Ds02Preview() {
     setBatteryCharging(false);
     setLowBatteryNoticeVisible(false);
     window.setTimeout(() => setLowBatteryNoticeVisible(true), 0);
+  };
+  const stopVoiceRecognition = () => {
+    const recognition = voiceRecognitionRef.current;
+    if (!recognition) {
+      setVoiceListening(false);
+      return;
+    }
+
+    recognition.onstart = null;
+    recognition.onend = null;
+    recognition.onerror = null;
+    recognition.onresult = null;
+    try {
+      recognition.stop();
+    } catch {
+      recognition.abort();
+    }
+    voiceRecognitionRef.current = null;
+    setVoiceListening(false);
+    setVoiceInterimText("");
+  };
+  const closeVoicePanel = () => {
+    stopVoiceRecognition();
+    setVoicePanelActive(false);
+    setVoiceInterimText("");
+    setVoiceErrorText("");
+  };
+  const startVoiceRecognition = () => {
+    const Recognition = getSpeechRecognitionConstructor();
+    setVoicePanelActive(true);
+    setVoiceErrorText("");
+    setVoiceInterimText("");
+
+    if (!Recognition) {
+      setVoiceListening(false);
+      setVoiceErrorText("Voice input is unavailable.");
+      return;
+    }
+
+    stopVoiceRecognition();
+
+    const recognition = new Recognition();
+    recognition.lang = "vi-VN";
+    recognition.continuous = true;
+    recognition.interimResults = true;
+    recognition.maxAlternatives = 1;
+
+    recognition.onstart = () => {
+      setVoiceListening(true);
+      setVoiceErrorText("");
+    };
+    recognition.onend = () => {
+      if (voiceRecognitionRef.current === recognition) {
+        voiceRecognitionRef.current = null;
+      }
+      setVoiceListening(false);
+      setVoiceInterimText("");
+    };
+    recognition.onerror = (event) => {
+      setVoiceListening(false);
+      setVoiceInterimText("");
+      setVoiceErrorText(getVoiceErrorText(event.error));
+    };
+    recognition.onresult = (event) => {
+      const finalSegments: string[] = [];
+      let interim = "";
+
+      for (let i = event.resultIndex; i < event.results.length; i += 1) {
+        const result = event.results[i];
+        if (!result || result.length === 0) continue;
+
+        const transcript = result[0].transcript.trim();
+        if (!transcript) continue;
+
+        if (result.isFinal) {
+          finalSegments.push(transcript);
+        } else {
+          interim = `${interim} ${transcript}`.trim();
+        }
+      }
+
+      if (finalSegments.length > 0) {
+        setVoiceMessages((items) => [
+          ...items,
+          ...finalSegments.flatMap((text) => [
+            {
+              id: ++voiceMessageIdRef.current,
+              role: "user" as const,
+              text,
+            },
+            {
+              id: ++voiceMessageIdRef.current,
+              role: "bot" as const,
+              text: getVoiceBotReply(text),
+            },
+          ]),
+        ].slice(-10));
+      }
+      setVoiceInterimText(interim);
+    };
+
+    voiceRecognitionRef.current = recognition;
+    try {
+      recognition.start();
+    } catch {
+      voiceRecognitionRef.current = null;
+      setVoiceListening(false);
+      setVoiceErrorText("Voice input could not start.");
+    }
+  };
+  const clearTranslateCloseTimer = () => {
+    if (translateCloseTimerRef.current === null) return;
+    window.clearTimeout(translateCloseTimerRef.current);
+    translateCloseTimerRef.current = null;
+  };
+  const clearTranslateOpenFrame = () => {
+    if (translateOpenFrameRef.current === null) return;
+    window.cancelAnimationFrame(translateOpenFrameRef.current);
+    translateOpenFrameRef.current = null;
+  };
+  const openTranslatePanel = () => {
+    clearTranslateOpenFrame();
+    clearTranslateCloseTimer();
+    closeVoicePanel();
+    translateLastTapAtRef.current = 0;
+    setActiveAppId(null);
+    setLauncherSurface("home");
+    setTranslateSide("center");
+    setTranslatePanelClosing(false);
+    setTranslatePanelActive(false);
+
+    translateOpenFrameRef.current = window.requestAnimationFrame(() => {
+      translateOpenFrameRef.current = window.requestAnimationFrame(() => {
+        translateOpenFrameRef.current = null;
+        setTranslatePanelActive(true);
+      });
+    });
+  };
+  const closeTranslatePanel = (instant = false) => {
+    clearTranslateOpenFrame();
+    clearTranslateCloseTimer();
+    translateLastTapAtRef.current = 0;
+
+    if (!translatePanelActive) {
+      setTranslatePanelClosing(false);
+      return;
+    }
+
+    if (instant) {
+      setTranslatePanelActive(false);
+      setTranslatePanelClosing(false);
+      return;
+    }
+
+    setTranslatePanelClosing(true);
+    translateCloseTimerRef.current = window.setTimeout(() => {
+      setTranslatePanelActive(false);
+      setTranslatePanelClosing(false);
+      translateCloseTimerRef.current = null;
+    }, 720);
+  };
+  const handleVoiceSurfaceTap = () => {
+    const now = window.performance.now();
+
+    if (translatePanelActive) {
+      const previousTranslateTapAt = translateLastTapAtRef.current;
+      if (!translatePanelClosing && now - previousTranslateTapAt <= 360) {
+        closeTranslatePanel();
+        return;
+      }
+
+      translateLastTapAtRef.current = now;
+      return;
+    }
+
+    const previousTapAt = voiceLastTapAtRef.current;
+
+    if (voicePanelActive) {
+      if (now - previousTapAt <= 360) {
+        voiceLastTapAtRef.current = 0;
+        closeVoicePanel();
+        return;
+      }
+
+      voiceLastTapAtRef.current = now;
+      return;
+    }
+
+    voiceLastTapAtRef.current = now;
+    startVoiceRecognition();
+  };
+  const openLauncherApp = (id: number) => {
+    if (id === 4) {
+      openTranslatePanel();
+      return;
+    }
+
+    closeVoicePanel();
+    closeTranslatePanel(true);
+    setActiveAppId(id);
+    setLauncherSurface("drawer");
+  };
+  const goBackToAppDrawer = () => {
+    closeVoicePanel();
+    closeTranslatePanel(true);
+    setActiveAppId(null);
+    setLauncherSurface("drawer");
+  };
+  const suppressNextLauncherClick = () => {
+    suppressLauncherClickRef.current = true;
+    window.setTimeout(() => {
+      suppressLauncherClickRef.current = false;
+    }, 180);
+  };
+  const handleLauncherSwipe = (deltaX: number) => {
+    if (activeAppId !== null) return;
+    if (deltaX < -36) {
+      closeVoicePanel();
+      closeTranslatePanel(true);
+      setLauncherSurface((surface) =>
+        surface === "drawer" ? "home" : "calendar"
+      );
+      suppressNextLauncherClick();
+    } else if (deltaX > 36) {
+      closeVoicePanel();
+      closeTranslatePanel(true);
+      setLauncherSurface((surface) =>
+        surface === "calendar" ? "home" : "drawer"
+      );
+      suppressNextLauncherClick();
+    }
+  };
+  const handleLauncherPointerDown = (
+    event: React.PointerEvent<HTMLElement>
+  ) => {
+    if (!event.isPrimary) return;
+    launcherPointerStartXRef.current = event.clientX;
+    launcherPointerIdRef.current = event.pointerId;
+  };
+  const handleLauncherPointerUp = (
+    event: React.PointerEvent<HTMLElement>
+  ) => {
+    if (
+      launcherPointerIdRef.current !== null &&
+      event.pointerId !== launcherPointerIdRef.current
+    ) {
+      return;
+    }
+
+    const startX = launcherPointerStartXRef.current;
+    launcherPointerStartXRef.current = null;
+    launcherPointerIdRef.current = null;
+    if (startX === null) return;
+
+    handleLauncherSwipe(event.clientX - startX);
+  };
+  const handleLauncherPointerCancel = () => {
+    launcherPointerStartXRef.current = null;
+    launcherPointerIdRef.current = null;
   };
 
   return (
@@ -642,7 +1037,7 @@ export function Ds02Preview() {
               </div>
             </div>
 
-            {/* Black launcher = TiltedDock + tab content */}
+            {/* Launcher = orb home, app drawer, and full-screen app pages. */}
             <div
               aria-hidden={!showDock}
               className="ds02-launcher absolute inset-0 transition-[background-color,color,opacity] duration-200"
@@ -652,16 +1047,36 @@ export function Ds02Preview() {
               }}
             >
               {showDock && (
-                <DockPage
-                  activeTab={activeTab}
-                  onSelect={setActiveTab}
+                <LauncherPage
+                  surface={launcherSurface}
+                  activeAppId={activeAppId}
+                  onOpenApp={(id) => {
+                    if (!suppressLauncherClickRef.current) {
+                      openLauncherApp(id);
+                    }
+                  }}
+                  onBack={goBackToAppDrawer}
+                  translatePanelActive={translatePanelActive}
+                  translatePanelClosing={translatePanelClosing}
+                  voicePanelActive={voicePanelActive}
+                  voiceListening={voiceListening}
+                  voiceMessages={voiceMessages}
+                  voiceInterimText={voiceInterimText}
+                  voiceErrorText={voiceErrorText}
+                  onVoiceTap={() => {
+                    if (!suppressLauncherClickRef.current) {
+                      handleVoiceSurfaceTap();
+                    }
+                  }}
+                  onPointerDown={handleLauncherPointerDown}
+                  onPointerUp={handleLauncherPointerUp}
+                  onPointerCancel={handleLauncherPointerCancel}
                   translateSide={translateSide}
                   onSelectTranslateSide={setTranslateSide}
                   settings={{
                     offline,
-                    wifiDeviceName: wifiDevice.label,
-                    onChooseWifiDevice: () => openDevicePicker("wifi"),
-                    onToggleWifi: togglePreviewWifi,
+                    wifiDeviceName: "Connected",
+                    onConfigureWifi: openWifiSetup,
                     bluetoothAvailable: btAvailable,
                     bluetoothDeviceName: bluetoothDevice.label,
                     onChooseBluetoothDevice: () => openDevicePicker("bluetooth"),
@@ -672,7 +1087,6 @@ export function Ds02Preview() {
                     onBrightnessChange: updatePreviewBrightness,
                     theme: previewTheme,
                     onToggleTheme: togglePreviewTheme,
-                    wakeWordName: DS02_WAKE_WORD,
                     wakeSoundName: wakeSound?.label ?? "Ringtone",
                     onChangeWakeSound: openWakeSoundPicker,
                     backgroundName: BACKGROUNDS[backgroundIndex].label,
@@ -701,19 +1115,20 @@ export function Ds02Preview() {
 
             {devicePicker !== null && (
               <DevicePickerModal
-                title={
-                  devicePicker === "wifi" ? "Wi-Fi networks" : "Bluetooth devices"
-                }
-                options={
-                  devicePicker === "wifi"
-                    ? WIFI_DEVICE_OPTIONS
-                    : BLUETOOTH_DEVICE_OPTIONS
-                }
-                currentIndex={
-                  devicePicker === "wifi" ? wifiDeviceIndex : bluetoothDeviceIndex
-                }
-                onSelect={(index) => selectDevice(devicePicker, index)}
+                title="Bluetooth devices"
+                options={BLUETOOTH_DEVICE_OPTIONS}
+                currentIndex={bluetoothDeviceIndex}
+                onSelect={selectDevice}
                 onClose={closeDevicePicker}
+              />
+            )}
+
+            {wifiSetupOpen && (
+              <WifiSetupModal
+                ssid={WIFI_CONFIG_AP.ssid}
+                password={WIFI_CONFIG_AP.password}
+                url={WIFI_CONFIG_AP.url}
+                onClose={closeWifiSetup}
               />
             )}
 
@@ -877,6 +1292,66 @@ function WakeSoundModal({
               </button>
             );
           })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function WifiSetupModal({
+  ssid,
+  password,
+  url,
+  onClose,
+}: {
+  ssid: string;
+  password: string;
+  url: string;
+  onClose: () => void;
+}) {
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-label="Wi-Fi setup"
+      className="absolute inset-0 z-[70] grid place-items-center bg-[#061018] px-4 text-white"
+      onClick={onClose}
+    >
+      <div
+        className="grid w-full max-w-[292px] gap-3 text-center"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <div className="flex items-center justify-between text-left">
+          <div className="text-[13px] font-bold leading-none text-white">
+            Wi-Fi setup
+          </div>
+          <button
+            type="button"
+            aria-label="Close Wi-Fi setup"
+            onClick={onClose}
+            className="grid h-7 w-7 place-items-center rounded-md text-white/75 hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300"
+          >
+            <X size={15} aria-hidden />
+          </button>
+        </div>
+
+        <div className="text-[11px] font-semibold leading-snug text-slate-400">
+          Vao Wi-Fi cua ban, tim mang:
+        </div>
+        <div className="truncate text-[18px] font-black leading-none text-cyan-300">
+          {ssid}
+        </div>
+        <div className="truncate text-[12px] font-bold leading-none text-slate-100">
+          Pass: {password}
+        </div>
+        <div className="pt-2 text-[11px] font-semibold leading-snug text-slate-400">
+          Sau do mo link:
+        </div>
+        <div className="break-all text-[14px] font-black leading-tight text-emerald-300">
+          {url}
+        </div>
+        <div className="text-[10px] font-semibold leading-snug text-slate-400">
+          Trang nay se quet Wi-Fi va luu mat khau vao mach.
         </div>
       </div>
     </div>
@@ -1349,81 +1824,381 @@ function MiniBatteryBar({
 /* -------------------------------------------------------------------------- */
 
 const TAB_PAGES: Record<number, { title: string; body: string }> = {
-  1: { title: "Home", body: "" }, // Home renders the real <Calendar /> below.
-  2: { title: "Search", body: "Tìm kiếm thiết bị, bài hát, cài đặt…" },
-  3: { title: "Alerts", body: "Không có thông báo mới." },
+  1: { title: "Teach", body: "Bai hoc, tro giang va luyen tap." },
+  2: { title: "Code", body: "Code, terminal, cài đặt debug…" },
+  3: { title: "Record", body: "Ghi âm và lưu lại giọng nói." },
   4: { title: "Translate", body: "Vi <-> Chinese / Vi <-> En" },
   5: { title: "Music", body: "Chưa có bài hát nào đang phát." },
   6: { title: "Settings", body: "Wi-Fi, âm thanh, hiển thị, ngôn ngữ…" },
 };
 
-function DockPage({
-  activeTab,
-  onSelect,
+type LauncherAppItem = {
+  id: number;
+  label: string;
+  icon: ReactNode;
+};
+
+const APP_ITEMS: LauncherAppItem[] = [
+  { id: 1, icon: <BookOpen size={24} />, label: "Teach" },
+  { id: 2, icon: <Terminal size={24} />, label: "Code" },
+  { id: 3, icon: <Mic2 size={24} />, label: "Record" },
+  { id: 4, icon: <Languages size={24} />, label: "Translate" },
+  { id: 5, icon: <Music size={24} />, label: "Music" },
+  { id: 6, icon: <Settings size={24} />, label: "Settings" },
+];
+
+function LauncherPage({
+  surface,
+  activeAppId,
+  onOpenApp,
+  onBack,
+  translatePanelActive,
+  translatePanelClosing,
+  voicePanelActive,
+  voiceListening,
+  voiceMessages,
+  voiceInterimText,
+  voiceErrorText,
+  onVoiceTap,
+  onPointerDown,
+  onPointerUp,
+  onPointerCancel,
   translateSide,
   onSelectTranslateSide,
   settings,
 }: {
-  activeTab: number;
-  onSelect: (id: number) => void;
+  surface: LauncherSurface;
+  activeAppId: number | null;
+  onOpenApp: (id: number) => void;
+  onBack: () => void;
+  translatePanelActive: boolean;
+  translatePanelClosing: boolean;
+  voicePanelActive: boolean;
+  voiceListening: boolean;
+  voiceMessages: VoiceMessage[];
+  voiceInterimText: string;
+  voiceErrorText: string;
+  onVoiceTap: () => void;
+  onPointerDown: (event: React.PointerEvent<HTMLElement>) => void;
+  onPointerUp: (event: React.PointerEvent<HTMLElement>) => void;
+  onPointerCancel: (event: React.PointerEvent<HTMLElement>) => void;
   translateSide: TranslateSide;
   onSelectTranslateSide: (side: TranslateSide) => void;
   settings: Ds02SettingsPanelProps;
 }) {
-  const isHome = activeTab === 1;
-  const isProfile = activeTab === 4;
-  const isSettings = activeTab === 6;
-  const isLight = settings.theme === "light";
+  const activeApp =
+    activeAppId === null || activeAppId === 4
+      ? null
+      : APP_ITEMS.find((item) => item.id === activeAppId) ?? null;
+
+  if (activeApp) {
+    return (
+      <AppDetailScreen
+        app={activeApp}
+        onBack={onBack}
+        translateSide={translateSide}
+        onSelectTranslateSide={onSelectTranslateSide}
+        settings={settings}
+      />
+    );
+  }
+
+  if (surface === "drawer") {
+    return (
+      <AppDrawer
+        apps={APP_ITEMS}
+        onOpenApp={onOpenApp}
+        onPointerDown={onPointerDown}
+        onPointerUp={onPointerUp}
+        onPointerCancel={onPointerCancel}
+      />
+    );
+  }
+
+  if (surface === "calendar") {
+    return (
+      <CalendarPanel
+        theme={settings.theme}
+        onPointerDown={onPointerDown}
+        onPointerUp={onPointerUp}
+        onPointerCancel={onPointerCancel}
+      />
+    );
+  }
 
   return (
-    <div className={isLight ? "absolute inset-0 flex flex-col text-slate-950" : "absolute inset-0 flex flex-col text-white"}>
-      {/* Tab content fills the screen above the dock. */}
-      <div className="flex-1 relative overflow-hidden">
-        {isHome ? (
-          <div
-            className="ds02-dock-page"
+    <LauncherHome
+      voicePanelActive={voicePanelActive}
+      voiceListening={voiceListening}
+      voiceMessages={voiceMessages}
+      voiceInterimText={voiceInterimText}
+      voiceErrorText={voiceErrorText}
+      translatePanelActive={translatePanelActive}
+      translatePanelClosing={translatePanelClosing}
+      translateSide={translateSide}
+      translateLanguages={getTranslateLanguages(settings.translateModeName)}
+      onSelectTranslateSide={onSelectTranslateSide}
+      onVoiceTap={onVoiceTap}
+      onPointerDown={onPointerDown}
+      onPointerUp={onPointerUp}
+      onPointerCancel={onPointerCancel}
+    />
+  );
+}
+
+function CalendarPanel({
+  theme,
+  onPointerDown,
+  onPointerUp,
+  onPointerCancel,
+}: {
+  theme: Ds02Theme;
+  onPointerDown: (event: React.PointerEvent<HTMLElement>) => void;
+  onPointerUp: (event: React.PointerEvent<HTMLElement>) => void;
+  onPointerCancel: (event: React.PointerEvent<HTMLElement>) => void;
+}) {
+  return (
+    <div
+      className="ds02-calendar-panel"
+      data-theme={theme}
+      onPointerDown={onPointerDown}
+      onPointerUp={onPointerUp}
+      onPointerCancel={onPointerCancel}
+    >
+      <Calendar compact theme={theme} className="px-2 pt-1" />
+    </div>
+  );
+}
+
+function LauncherHome({
+  voicePanelActive,
+  voiceListening,
+  voiceMessages,
+  voiceInterimText,
+  voiceErrorText,
+  translatePanelActive,
+  translatePanelClosing,
+  translateSide,
+  translateLanguages,
+  onSelectTranslateSide,
+  onVoiceTap,
+  onPointerDown,
+  onPointerUp,
+  onPointerCancel,
+}: {
+  voicePanelActive: boolean;
+  voiceListening: boolean;
+  voiceMessages: VoiceMessage[];
+  voiceInterimText: string;
+  voiceErrorText: string;
+  translatePanelActive: boolean;
+  translatePanelClosing: boolean;
+  translateSide: TranslateSide;
+  translateLanguages: [string, string];
+  onSelectTranslateSide: (side: TranslateSide) => void;
+  onVoiceTap: () => void;
+  onPointerDown: (event: React.PointerEvent<HTMLElement>) => void;
+  onPointerUp: (event: React.PointerEvent<HTMLElement>) => void;
+  onPointerCancel: (event: React.PointerEvent<HTMLElement>) => void;
+}) {
+  const voiceChatRef = useRef<HTMLSpanElement | null>(null);
+  const hasVoiceCopy =
+    voiceMessages.length > 0 || voiceInterimText.length > 0 || voiceErrorText.length > 0;
+
+  useEffect(() => {
+    const chat = voiceChatRef.current;
+    if (!voicePanelActive || !chat) return;
+
+    chat.scrollTop = chat.scrollHeight;
+  }, [voicePanelActive, voiceMessages.length, voiceInterimText, voiceErrorText]);
+
+  const homeClassName = [
+    "ds02-home-orb-screen",
+    voicePanelActive ? "is-voice-active" : "",
+    voiceListening ? "is-listening" : "",
+    translatePanelActive ? "is-translate-active" : "",
+    translatePanelClosing ? "is-translate-closing" : "",
+    translatePanelActive && translateSide === "left" ? "is-translate-left" : "",
+    translatePanelActive && translateSide === "right" ? "is-translate-right" : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
+
+  return (
+    <div
+      role="button"
+      tabIndex={0}
+      aria-label={translatePanelActive ? "Translate mode" : "Voice input"}
+      aria-pressed={voicePanelActive || translatePanelActive}
+      className={homeClassName}
+      onClick={onVoiceTap}
+      onKeyDown={(event) => {
+        if (event.key !== "Enter" && event.key !== " ") return;
+        event.preventDefault();
+        onVoiceTap();
+      }}
+      onPointerDown={onPointerDown}
+      onPointerUp={onPointerUp}
+      onPointerCancel={onPointerCancel}
+    >
+      <button
+        type="button"
+        className="ds02-translate-language is-left"
+        aria-label={`Move orb to ${translateLanguages[0]}`}
+        onClick={(event) => {
+          event.stopPropagation();
+          onSelectTranslateSide("left");
+        }}
+      >
+        {translateLanguages[0]}
+      </button>
+      <button
+        type="button"
+        className="ds02-translate-language is-right"
+        aria-label={`Move orb to ${translateLanguages[1]}`}
+        onClick={(event) => {
+          event.stopPropagation();
+          onSelectTranslateSide("right");
+        }}
+      >
+        {translateLanguages[1]}
+      </button>
+      <span className="ds02-translate-line" aria-hidden />
+      <span className="ds02-voice-frame">
+        <span className="profile-avatar-stage ds02-home-orb-stage">
+          <span className="profile-avatar-orb" aria-hidden>
+            <span className="profile-avatar-cloud profile-avatar-cloud-a" />
+            <span className="profile-avatar-cloud profile-avatar-cloud-b" />
+            <span className="profile-avatar-cloud profile-avatar-cloud-c" />
+          </span>
+        </span>
+        {voicePanelActive && (
+          <span ref={voiceChatRef} className="ds02-voice-chat" aria-live="polite">
+            {hasVoiceCopy ? (
+              <>
+                {voiceMessages.map((message) => (
+                  <span
+                    key={message.id}
+                    className={`ds02-voice-message is-${message.role}`}
+                  >
+                    {message.text}
+                  </span>
+                ))}
+                {voiceInterimText && (
+                  <span className="ds02-voice-message is-user is-interim">
+                    {voiceInterimText}
+                  </span>
+                )}
+                {voiceErrorText && (
+                  <span className="ds02-voice-message is-bot is-error">
+                    {voiceErrorText}
+                  </span>
+                )}
+              </>
+            ) : (
+              <span className="ds02-voice-idle" aria-hidden>
+                <span />
+                <span />
+                <span />
+              </span>
+            )}
+          </span>
+        )}
+      </span>
+    </div>
+  );
+}
+
+function AppDrawer({
+  apps,
+  onOpenApp,
+  onPointerDown,
+  onPointerUp,
+  onPointerCancel,
+}: {
+  apps: LauncherAppItem[];
+  onOpenApp: (id: number) => void;
+  onPointerDown: (event: React.PointerEvent<HTMLElement>) => void;
+  onPointerUp: (event: React.PointerEvent<HTMLElement>) => void;
+  onPointerCancel: (event: React.PointerEvent<HTMLElement>) => void;
+}) {
+  return (
+    <div
+      className="ds02-app-drawer"
+      onPointerDown={onPointerDown}
+      onPointerUp={onPointerUp}
+      onPointerCancel={onPointerCancel}
+    >
+      <div className="ds02-app-grid">
+        {apps.map((app) => (
+          <button
+            key={app.id}
+            type="button"
+            className="ds02-app-button"
+            onClick={() => onOpenApp(app.id)}
+            aria-label={app.label}
           >
-            <Calendar compact theme={settings.theme} />
-          </div>
-        ) : isProfile ? (
-          <div className="ds02-dock-page">
-            <ProfileAvatar3D
-              speaking={false}
-              theme={settings.theme}
-              translateModeName={settings.translateModeName}
-              activeSide={translateSide}
-              onSelectSide={onSelectTranslateSide}
-            />
-          </div>
-        ) : isSettings ? (
-          <div className="ds02-dock-page">
-            <Ds02SettingsPanel {...settings} />
-          </div>
+            <span className="ds02-app-icon-bubble" aria-hidden>
+              {app.icon}
+            </span>
+            <span className="ds02-app-label">{app.label}</span>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function AppDetailScreen({
+  app,
+  onBack,
+  translateSide,
+  onSelectTranslateSide,
+  settings,
+}: {
+  app: LauncherAppItem;
+  onBack: () => void;
+  translateSide: TranslateSide;
+  onSelectTranslateSide: (side: TranslateSide) => void;
+  settings: Ds02SettingsPanelProps;
+}) {
+  return (
+    <div className="ds02-app-detail" data-theme={settings.theme}>
+      {app.id === 6 && (
+        <div className="ds02-app-header-title">Settings</div>
+      )}
+
+      <button
+        type="button"
+        className="ds02-app-back-button"
+        aria-label="Back"
+        onClick={onBack}
+      >
+        <ArrowLeft size={15} aria-hidden />
+      </button>
+
+      <div className="ds02-app-content">
+        {app.id === 4 ? (
+          <ProfileAvatar3D
+            speaking={false}
+            theme={settings.theme}
+            translateModeName={settings.translateModeName}
+            activeSide={translateSide}
+            onSelectSide={onSelectTranslateSide}
+          />
+        ) : app.id === 6 ? (
+          <Ds02SettingsPanel {...settings} />
         ) : (
-          <div className="ds02-dock-page grid place-items-center px-6 text-center">
-            <div>
-              <div className={isLight ? "text-[10px] uppercase tracking-widest text-slate-500" : "text-[10px] uppercase tracking-widest text-white/50"}>
-                Tab #{activeTab}
-              </div>
-              <div className="text-2xl font-semibold mt-1">
-                {TAB_PAGES[activeTab]?.title}
-              </div>
-              <div className={isLight ? "text-xs text-slate-600 mt-2 max-w-[220px]" : "text-xs text-white/70 mt-2 max-w-[220px]"}>
-                {TAB_PAGES[activeTab]?.body}
-              </div>
+          <div className="ds02-app-placeholder">
+            <div className="ds02-app-placeholder-title">
+              {TAB_PAGES[app.id]?.title ?? app.label}
+            </div>
+            <div className="ds02-app-placeholder-body">
+              {TAB_PAGES[app.id]?.body ?? ""}
             </div>
           </div>
         )}
       </div>
-
-      {/* Bottom dock navigation. */}
-      <TiltedDock
-        variant="inset"
-        scale={0.72}
-        activeId={activeTab}
-        theme={settings.theme}
-        onSelect={onSelect}
-      />
     </div>
   );
 }

@@ -10,6 +10,8 @@
 #include <freertos/task.h>
 #include <esp_network.h>
 #include <esp_log.h>
+#include <cstdio>
+#include <type_traits>
 #include <utility>
 
 #include <font_awesome.h>
@@ -25,6 +27,52 @@ static const char *TAG = "WifiBoard";
 
 // Connection timeout in seconds
 static constexpr int CONNECT_TIMEOUT_SEC = 60;
+static constexpr int WIFI_CONFIG_AFTER_BOOT_DELAY_MS = 4600;
+static constexpr const char* WIFI_CONFIG_AP_SSID = "Ekko-Huynh-Robot";
+static constexpr const char* WIFI_CONFIG_AP_PASSWORD = "0799888358";
+
+namespace {
+
+template <typename Field>
+void AssignConfigString(Field& field, const char* value) {
+    using RawField = std::remove_reference_t<Field>;
+    if constexpr (std::is_array_v<RawField>) {
+        std::snprintf(field, sizeof(field), "%s", value);
+    } else {
+        field = value;
+    }
+}
+
+template <typename Config, typename = void>
+struct HasPasswordField : std::false_type {};
+
+template <typename Config>
+struct HasPasswordField<Config, std::void_t<decltype(std::declval<Config&>().password)>> : std::true_type {};
+
+template <typename Config, typename = void>
+struct HasApPasswordField : std::false_type {};
+
+template <typename Config>
+struct HasApPasswordField<Config, std::void_t<decltype(std::declval<Config&>().ap_password)>> : std::true_type {};
+
+template <typename Config, typename = void>
+struct HasSoftApPasswordField : std::false_type {};
+
+template <typename Config>
+struct HasSoftApPasswordField<Config, std::void_t<decltype(std::declval<Config&>().softap_password)>> : std::true_type {};
+
+template <typename Config>
+void ConfigureApPassword(Config& config) {
+    if constexpr (HasPasswordField<Config>::value) {
+        AssignConfigString(config.password, WIFI_CONFIG_AP_PASSWORD);
+    } else if constexpr (HasApPasswordField<Config>::value) {
+        AssignConfigString(config.ap_password, WIFI_CONFIG_AP_PASSWORD);
+    } else if constexpr (HasSoftApPasswordField<Config>::value) {
+        AssignConfigString(config.softap_password, WIFI_CONFIG_AP_PASSWORD);
+    }
+}
+
+} // namespace
 
 WifiBoard::WifiBoard() {
     // Create connection timeout timer
@@ -54,8 +102,9 @@ void WifiBoard::StartNetwork() {
 
     // Initialize WiFi manager
     WifiManagerConfig config;
-    config.ssid_prefix = "Xiaozhi";
+    config.ssid_prefix = WIFI_CONFIG_AP_SSID;
     config.language = Lang::CODE;
+    ConfigureApPassword(config);
     wifi_manager.Initialize(config);
 
     // Set unified event callback - forward to NetworkEvent with SSID data
@@ -97,8 +146,8 @@ void WifiBoard::TryWifiConnect() {
         WifiManager::GetInstance().StartStation();
     } else {
         // No SSID configured, enter config mode
-        // Wait for the board version to be shown
-        vTaskDelay(pdMS_TO_TICKS(1500));
+        // Wait for the boot splash/loading screen to finish before showing setup.
+        vTaskDelay(pdMS_TO_TICKS(WIFI_CONFIG_AFTER_BOOT_DELAY_MS));
         StartWifiConfigMode();
     }
 }
@@ -167,10 +216,19 @@ void WifiBoard::StartWifiConfigMode() {
 
     // Show config prompt after a short delay
     Application::GetInstance().Schedule([&wifi_manager]() {
-        std::string hint = Lang::Strings::CONNECT_TO_HOTSPOT;
+        const auto ap_ssid = wifi_manager.GetApSsid();
+        const auto ap_url = wifi_manager.GetApWebUrl();
+
+        auto display = Board::GetInstance().GetDisplay();
+        display->ShowWifiConfigPrompt(ap_ssid.c_str(), WIFI_CONFIG_AP_PASSWORD, ap_url.c_str());
+
+        std::string hint = "Vao Wi-Fi cua ban, tim mang: ";
         hint += wifi_manager.GetApSsid();
-        hint += Lang::Strings::ACCESS_VIA_BROWSER;
+        hint += " (pass: ";
+        hint += WIFI_CONFIG_AP_PASSWORD;
+        hint += "). Sau do mo link: ";
         hint += wifi_manager.GetApWebUrl();
+        hint += " de quet Wi-Fi va dang nhap.";
 
         Application::GetInstance().Alert(Lang::Strings::WIFI_CONFIG_MODE, hint.c_str(), "gear", Lang::Sounds::OGG_WIFICONFIG);
     });
@@ -194,6 +252,11 @@ void WifiBoard::StartWifiConfigMode() {
         vTaskDelete(NULL);
     }, "acoustic_wifi", 4096, reinterpret_cast<void*>(channel), 2, NULL);
 #endif
+}
+
+bool WifiBoard::RequestWifiConfigMode() {
+    EnterWifiConfigMode();
+    return true;
 }
 
 void WifiBoard::EnterWifiConfigMode() {
